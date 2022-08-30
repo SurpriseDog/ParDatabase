@@ -13,6 +13,7 @@ import subprocess
 
 from sd.easy_args import easy_parse
 from sd.chronology import fmt_time
+from sd.numerology import rfs
 
 
 BASEDIR = '.par2_database'          # Where to put the database folder
@@ -29,10 +30,9 @@ def tprint(*args, **kargs):
     "Terminal print: Erasable text in terminal"
     if not UARGS['quiet']:
         text = ' '.join(map(str, args))
-        if len(text) < TERM_WIDTH:
-            print('\r' * TERM_WIDTH + text, **kargs, end=' ' * (TERM_WIDTH - len(text)))
-        else:
-            print(text, **kargs)
+        if len(text) > TERM_WIDTH:
+            text = text[:TERM_WIDTH-3] + '...'
+        print('\r' * TERM_WIDTH + text, **kargs, end=' ' * (TERM_WIDTH - len(text)))
 
 
 def qprint(*args, **kargs):
@@ -142,7 +142,6 @@ class Info:
             self.hash = None
             self.mtime = None
             self.size = None
-            self.rehash()
             self.update()
 
 
@@ -160,6 +159,7 @@ class Info:
     def rehash(self,):
         "Rehash the file"
         self.hash = get_hash(self.pathname)
+
 
     def repair(self, par2):
         "Attempt to repair a file with the files found in the database"
@@ -323,6 +323,46 @@ def save_database(par_database, files, par2):
             json.dump([time.time(), UARGS['hash'], files, par2], f)
 
 
+def gen_par2(new_pars, data2process, par2):
+    start_time = time.perf_counter()
+    rt_start = start_time   # Realtime time start
+    rt_data = 0             # Realtime data start
+    rt_rate = 0
+    data_seen = 0           # Data processed
+
+    def bps(num):
+        return rfs(num, digits=2) + '/s'
+
+    print("Creating parity for", len(new_pars), 'files spanning', rfs(data2process))
+    for count, info in enumerate(new_pars):
+        status = 'Processing #' + str(count + 1) + ' '
+        if data_seen:
+            # rate = data_seen / (time.time() - start_time)
+            eta = (data2process - data_seen) / rate
+            if rt_rate:
+                status += 'at ' + bps(rt_rate) + ' averaging '
+            status += bps(rate) + ' with ' + fmt_time(eta) + ' remaining:'
+
+
+        data_seen += info.size
+        tprint(status, rel_path(info.pathname))
+        info.rehash()
+        info.update()
+        info.generate(par2)
+
+        # Calculate real time rate
+        if time.perf_counter() - rt_start >= 4:
+            rt_rate = (data_seen - rt_data) / (time.perf_counter() - rt_start)
+            rt_start = time.perf_counter()
+            rt_data = data_seen
+
+        rate = data_seen / (time.perf_counter() - start_time)
+
+
+
+    tprint("Done. Processed", len(new_pars), 'files in', fmt_time(time.time() - start_time))
+
+
 def main():
     par_database = os.path.join(BASEDIR, 'database.xz')
     files, par2 = load_database(par_database)
@@ -331,8 +371,15 @@ def main():
 
     visited = []
     file_errors = []
-    last_save = time.time()             # Last time database was saved
-    start_time = time.time()
+    last_save = time.time()         # Last time database was saved
+    start_time = time.perf_counter()
+
+    new_pars = []                   # Files to calculate .par2
+    data2process = 0                # Data left to process into .par2
+
+
+    # Walk through file tree looking for files that need to be rehashed
+    print("Scanning file tree:", TARGETDIR)
     for stat, pathname in walk(TARGETDIR):
         relpath = rel_path(pathname)
         visited.append(relpath)
@@ -341,10 +388,9 @@ def main():
             info = files[relpath]
             info.pathname = pathname
             if mtime > info.mtime:
-                print("File changed:", relpath)
-                info.rehash()
-                info.update()
-                info.generate(par2)
+                # tprint("File changed:", relpath)
+                new_pars.append(info)
+                data2process += info.size
             elif UARGS['verify'] or UARGS['repair']:
                 tprint("Verifying file:", relpath)
                 if not info.verify():
@@ -361,9 +407,10 @@ def main():
                     info.update()
 
         else:
-            tprint("New file:", relpath)
+            # tprint("New file:", relpath)
             info = Info(pathname)
-            info.generate(par2)
+            new_pars.append(info)
+            data2process += info.size
         files[relpath] = info
         # Save every hour
         if time.time() - last_save >= 3600:
@@ -371,11 +418,17 @@ def main():
     else:
         tprint()
 
+    # Rehash and generate .par2 files for files found earlier
+    if new_pars:
+        gen_par2(new_pars, data2process, par2)
+    else:
+        print("Done. Scanned", len(visited), 'files in', fmt_time(time.time() - start_time))
+
+
     if file_errors:
         print("\n\nWARNING! THE FOLLOWING FILES HAD ERRORS:")
         print('\n'.join(file_errors))
-    else:
-        print("Done. Scanned", len(visited), 'files in', fmt_time(time.time() - start_time))
+
 
     # Check for files deleted from database
     if UARGS['clean']:
@@ -392,8 +445,13 @@ def main():
 
 
 if __name__ == "__main__":
+    if not shutil.which('par2'):
+        print("Please install par2 to continue")
+        sys.exit(1)
+
     UARGS = parse_args()            # User arguments
+    if not UARGS:
+        sys.exit(1)
     BASEDIR = UARGS['basedir']
     TARGETDIR = UARGS['target']
-    if UARGS:
-        main()
+    main()

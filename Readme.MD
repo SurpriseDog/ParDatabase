@@ -1,6 +1,10 @@
-ParDatabase is a simple python script which allows you to recursively create .par2 parity files for an entire folder or filesystem. It uses the [par2](https://manpages.org/par2) utility to prevent **bit rot** caused by hardware failure or errors. Unlike other utilities, it will look at modification times to automatically detect when files have been updated and generate new .par2 files. Also it doesn't litter .par2 files all over the filessytem, instead keeping them all in a .par2_database folder.
+ParDatabase is a simple python script which allows you to recursively create .par2 parity files for an entire folder or filesystem. It uses the [par2](https://manpages.org/par2) utility to prevent **bit rot** caused by hardware failure or errors.
+
+Unlike other utilities, it will look at modification times to automatically detect when files have been updated and generate new .par2 files. Also it doesn't litter .par2 files all over the filessytem, instead keeping them all in a single .par2_database folder.
 
 ** Usage **
+
+Install par2 with: `sudo apt install par2`
 
 Run: `pardatabase.py <Target Directory>`
 

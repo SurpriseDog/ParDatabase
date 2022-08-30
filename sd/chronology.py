@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import datetime as dada
 
 from sd.common import warn
-from sd.common import sig
+from sd.numerology import sig
 from sd.common import bisect_small, search_list
 
 def int_time():
