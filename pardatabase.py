@@ -13,8 +13,7 @@ import subprocess
 from time import perf_counter as tpc
 
 from sd.easy_args import easy_parse
-from sd.chronology import fmt_time
-from sd.numerology import rfs, sig
+from sd.common import fmt_time, rfs, sig, spawn
 
 
 BASEDIR = '.par2_database'          # Where to put the database folder
@@ -22,6 +21,7 @@ TARGETDIR = '.'                     # What folder to scan
 HASHFUNC = hashlib.sha512           # Which hash function to use
 HEXES = [(('0' + hex(num)[2:])[-2:]).upper() for num in range(0, 256)]
 TERM_WIDTH = shutil.get_terminal_size()[0]
+TMPNAME = '.pardatabase_tmp_file'   # Temporary output name
 
 
 def rel_path(pathname):
@@ -125,7 +125,6 @@ def parse_args():
 def get_hash(path, chunk=1024**2):
     "Get sha512 of filename"
     m = HASHFUNC()
-
     with open(path, 'rb') as f:
         while True:
             data = f.read(chunk)
@@ -143,6 +142,12 @@ def hash2file(hexa):
     # hexa = binascii.hexlify(hexa).decode()
     return hexa[:2].upper(), hexa[2:32+2]
 
+
+def find_par(cwd, basename=TMPNAME):
+    "Find existing par2 tmp files"
+    for name in os.listdir(cwd):
+        if name.startswith(basename) and name.endswith('.par2'):
+            yield name
 
 
 class Info:
@@ -178,6 +183,7 @@ class Info:
 
 
     def repair(self, pfiles):
+        # todo test and run on blue
         "Attempt to repair a file with the files found in the database"
         if not self.hash in pfiles:
             print("No par2 files found for:", rel_path(self.pathname))
@@ -224,52 +230,57 @@ class Info:
         return status
 
 
-    def generate(self, pfiles, quiet=False):
+    def generate(self, pfiles, quiet=False, rehash=False):
         "Generate par2 or find existing"
-        if self.hash in pfiles:
+
+        if self.hash and self.hash in pfiles:
             if not quiet:
                 qprint("Found existing par2 for:", rel_path(self.pathname))
             return 0
         else:
-            folder, oname = hash2file(self.hash)
+
             cwd = os.path.dirname(self.pathname)
-
-            def find_par():
-                "Find existing par2 files"
-                for name in os.listdir(cwd):
-                    if name.startswith(oname) and name.endswith('.par2'):
-                        yield name
-
-            cmd = "par2 create -n1 -qq".split()
-            options = UARGS['options']
-            if options:
-                cmd.extend(('-'+options).split())
-            cmd += ['-a', oname, '--', os.path.basename(self.pathname)]
-
+            basename = '.pardatabase_tmp_file'
 
             # Delete leftover .par2 files
-            for name in find_par():
+            for name in find_par(cwd):
                 print("Overwriting existing par2 file:", rel_path(os.path.join(cwd, name)))
                 time.sleep(.1)
                 os.remove(os.path.join(cwd, name))
 
+            # Create hash in background if it doesn't exist
+            if rehash or not self.hash:
+                que, thread = spawn(get_hash, self.pathname)
+
+            # Run par2 command
+            cmd = "par2 create -n1 -qq".split()
+            options = UARGS['options']
+            if options:
+                cmd.extend(('-'+options).split())
+            cmd += ['-a', basename + '.par2', '--', os.path.basename(self.pathname)]
             ret = subprocess.run(cmd, check=True, cwd=cwd, stdout=subprocess.PIPE)
             stdout = ret.stdout.decode(encoding='utf-8', errors='replace').strip() if ret.stdout else ''
             if stdout:
                 print(stdout)
 
+
             # Look through generated .par2 files, hash them, move the files and add to pfiles dict
             ofiles = dict()
-            total_size = 0
-            for name in find_par():
-                dest = os.path.realpath(os.path.join(BASEDIR, 'par2', folder, name))
+            thread.join()
+            self.hash = que.get()
+            folder, oname = hash2file(self.hash)
+            total_size = 0                          # Running count of total .par2 size
+            for name in find_par(cwd, basename):
+                src = os.path.join(cwd, name)
+                dest = name.replace(TMPNAME, oname)
+                dest = os.path.realpath(os.path.join(BASEDIR, 'par2', folder, dest))
                 if os.path.exists(dest):
                     os.remove(dest)
-                src = os.path.join(cwd, name)
                 total_size += os.path.getsize(src)
+                # print('move', src, dest)
                 phash = get_hash(src)
                 shutil.move(src, dest)
-                ofiles[name] = phash
+                ofiles[oname] = phash
             pfiles[self.hash] = ofiles
             return total_size
 
@@ -343,9 +354,7 @@ def gen_par2(new_pars, data2process, pfiles):
 
         data_seen += info.size
         tprint(status, rel_path(info.pathname))
-        info.rehash()
-        info.update()
-        par_size = info.generate(pfiles)
+        par_size = info.generate(pfiles, rehash=True)
         if par_size:
             par_total += par_size
             data_total += info.size
@@ -367,16 +376,17 @@ def gen_par2(new_pars, data2process, pfiles):
 def save_database(par_database, files, pfiles):
     # Save the database in lzma which adds a nice checksum
     if files:       # Avoid deleting database if run on wrong folder
+        out = dict()
         with lzma.open(par_database, mode='wt', check=lzma.CHECK_CRC64, preset=3) as f:
             for pathname, info in files.items():
-                files[pathname] = vars(info)
+                out[pathname] = vars(info)
             meta = dict(mtime=time.time(),      # modification time
                         hash=UARGS['hash'],     # hash choice
                         encoding='hex',         # encode hash as hexadecimal
                         truncate=False,         # truncate hash to this many bits
                         version=1.0,            # Database version
                        )
-            json.dump([meta, files, pfiles], f)
+            json.dump([meta, out, pfiles], f)
 
 
 def load_database(par_database):
