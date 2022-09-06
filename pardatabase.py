@@ -4,37 +4,23 @@
 
 import os
 import sys
-import json
-import lzma
 import time
 import shutil
 import hashlib
 import subprocess
 from time import perf_counter as tpc
-
+from hexbase import HexBase
 from sd.easy_args import easy_parse
-from sd.common import fmt_time, rfs, sig, spawn
-
-
-BASEDIR = '.par2_database'          # Where to put the database folder
-TARGETDIR = '.'                     # What folder to scan
-HASHFUNC = hashlib.sha512           # Which hash function to use
-HEXES = [(('0' + hex(num)[2:])[-2:]).upper() for num in range(0, 256)]
-TERM_WIDTH = shutil.get_terminal_size()[0]
-TMPNAME = '.pardatabase_tmp_file'   # Temporary output name
-
-
-def rel_path(pathname):
-    return os.path.relpath(pathname, TARGETDIR)
+from sd.common import fmt_time, rfs, sig
 
 
 def tprint(*args, **kargs):
     "Terminal print: Erasable text in terminal"
-    if not UARGS['quiet']:
-        text = ' '.join(map(str, args))
-        if len(text) > TERM_WIDTH:
-            text = text[:TERM_WIDTH-3] + '...'
-        print('\r' * TERM_WIDTH + text, **kargs, end=' ' * (TERM_WIDTH - len(text)))
+    term_width = shutil.get_terminal_size()[0]      # 2.5 microseconds
+    text = ' '.join(map(str, args))
+    if len(text) > term_width:
+        text = text[:term_width-3] + '...'
+    print('\r' * term_width + text, **kargs, end=' ' * (term_width - len(text)))
 
 
 def qprint(*args, **kargs):
@@ -116,38 +102,19 @@ def parse_args():
         print("Base directory must be writeable")
         return False
 
-    args['basedir'] = os.path.realpath(os.path.join(basedir, '.par2_database'))
+    args['basedir'] = os.path.realpath(basedir)
     args['target'] = os.path.realpath(target)
 
     return args
 
 
-def get_hash(path, chunk=1024**2):
-    "Get sha512 of filename"
-    m = HASHFUNC()
-    with open(path, 'rb') as f:
-        while True:
-            data = f.read(chunk)
-            if data:
-                m.update(data)
-            else:
-                # return m.hexdigest()[:2] + base64.urlsafe_b64encode(m.digest()[1:]).decode()
-                # on disks savings of 10596 vs 11892 = 11% after lzma compression
-                # may be useful for in memory savings in future
-                return m.hexdigest()
 
-
-def hash2file(hexa):
-    "Take hash and convert to folder + name"
-    # hexa = binascii.hexlify(hexa).decode()
-    return hexa[:2].upper(), hexa[2:32+2]
-
-
-def find_par(cwd, basename=TMPNAME):
+def find_tmp(cwd, basename=''):
     "Find existing par2 tmp files"
     for name in os.listdir(cwd):
-        if name.startswith(basename) and name.endswith('.par2'):
+        if name.endswith('.par2') and name.startswith(basename):
             yield name
+
 
 
 class Info:
@@ -168,7 +135,7 @@ class Info:
 
     def verify(self,):
         "Verify file is correct or generate new one"
-        return bool(self.hash == get_hash(self.pathname))
+        return bool(self.hash == DATABASE.get_hash(self.pathname))
 
 
     def update(self,):
@@ -179,61 +146,35 @@ class Info:
 
     def rehash(self,):
         "Rehash the file"
-        self.hash = get_hash(self.pathname)
+        self.hash = DATABASE.get_hash(self.pathname)
 
 
-    def repair(self, pfiles):
-        # todo test and run on blue
+    def repair(self):
         "Attempt to repair a file with the files found in the database"
-        if not self.hash in pfiles:
+        if self.hash not in DATABASE.pfiles:
             print("No par2 files found for:", rel_path(self.pathname))
             return False
 
-        folder, _ = hash2file(self.hash)
         cwd = os.path.dirname(self.pathname)
-        dest_files = []
-        for name, phash in pfiles[self.hash].items():
-            src = os.path.join(BASEDIR, 'par2', folder, name)
-            dest = os.path.join(os.path.dirname(self.pathname), name)
+        dest_files = DATABASE.get(self.hash, cwd)
+        if dest_files:
+            cmd = "par2 repair".split() + [sorted(dest_files)[0]]
 
-            # Verify src integrity
-            if not os.path.exists(src):
-                print("ERROR! Missing .par2 file")
-                return False
-            if phash != get_hash(src):
-                print("WARNING! .par2 files failed vaildation!")
-
-            # Ensure dest in clear
-            if os.path.exists(dest):
-                print("Warning! path exists:", dest)
-                ans = None
-                while not ans:
-                    ans = input("Overwrite? Y/N ").lower().strip()[:1]
-                    if ans == 'n':
-                        return False
-                    if ans == 'y':
-                        break
-
-            # copy .par2 files over
-            shutil.copy(src, dest)
-            dest_files.append(dest)
-
-        cmd = "par2 repair".split() + [sorted(pfiles[self.hash].keys())[0]]
-
-        print(' '.join(cmd))
-        ret = subprocess.run(cmd, check=False, cwd=cwd)
-        status = not ret.returncode
-        if status:
-            for file in dest_files:
-                os.remove(file)
-
-        return status
+            print(' '.join(cmd))
+            ret = subprocess.run(cmd, check=False, cwd=cwd)
+            status = not ret.returncode
+            if status:
+                for file in dest_files:
+                    os.remove(file)
+            return status
+        else:
+            return False
 
 
-    def generate(self, pfiles, quiet=False, rehash=False):
+    def generate(self, quiet=False, rehash=False):
         "Generate par2 or find existing"
 
-        if self.hash and self.hash in pfiles:
+        if self.hash and self.hash in DATABASE.pfiles:
             if not quiet:
                 qprint("Found existing par2 for:", rel_path(self.pathname))
             return 0
@@ -243,14 +184,11 @@ class Info:
             basename = '.pardatabase_tmp_file'
 
             # Delete leftover .par2 files
-            for name in find_par(cwd):
+            for name in find_tmp(cwd):
                 print("Overwriting existing par2 file:", rel_path(os.path.join(cwd, name)))
                 time.sleep(.1)
                 os.remove(os.path.join(cwd, name))
 
-            # Create hash in background if it doesn't exist
-            if rehash or not self.hash:
-                que, thread = spawn(get_hash, self.pathname)
 
             # Run par2 command
             cmd = "par2 create -n1 -qq".split()
@@ -258,74 +196,44 @@ class Info:
             if options:
                 cmd.extend(('-'+options).split())
             cmd += ['-a', basename + '.par2', '--', os.path.basename(self.pathname)]
-            ret = subprocess.run(cmd, check=True, cwd=cwd, stdout=subprocess.PIPE)
-            stdout = ret.stdout.decode(encoding='utf-8', errors='replace').strip() if ret.stdout else ''
-            if stdout:
-                print(stdout)
+            ret = subprocess.Popen(cmd, cwd=cwd)
+            if rehash or not self.hash:
+                self.hash = DATABASE.get_hash(self.pathname)
+            code = ret.wait()
+            if code:
+                return 0
 
-
-            # Look through generated .par2 files, hash them, move the files and add to pfiles dict
-            ofiles = dict()
-            thread.join()
-            self.hash = que.get()
-            folder, oname = hash2file(self.hash)
             total_size = 0                          # Running count of total .par2 size
-            for name in find_par(cwd, basename):
+            for name in find_tmp(cwd, basename):
                 src = os.path.join(cwd, name)
-                dest = name.replace(TMPNAME, oname)
-                dest = os.path.realpath(os.path.join(BASEDIR, 'par2', folder, dest))
-                if os.path.exists(dest):
-                    os.remove(dest)
                 total_size += os.path.getsize(src)
-                # print('move', src, dest)
-                phash = get_hash(src)
-                shutil.move(src, dest)
-                ofiles[oname] = phash
-            pfiles[self.hash] = ofiles
+                DATABASE.put(src, self.hash, name=name.replace(basename, ''))
             return total_size
 
 
-def walk(dirname):
+
+def walk(dirname, exclude):
     "Walk through directory returning entry and pathname"
     for entry in os.scandir(dirname):
         if entry.is_symlink():
             continue
         pathname = os.path.join(dirname, entry.name)
+        if pathname.endswith('.par2'):
+            continue
         if not os.access(pathname, os.R_OK):
-            if not pathname.endswith('.par2'):
-                print("Could not access", pathname)
+            print("Could not access", pathname)
             continue
         if entry.is_dir():
-            if not pathname == BASEDIR:
-                yield from walk(pathname)
+            if not pathname == exclude:
+                yield from walk(pathname, exclude)
         else:
             stat = entry.stat()
             if stat.st_size > 0:
                 yield stat, pathname
 
 
-def clean(pfiles):
-    "Clean database of extraneous files"
-    par2_dir = os.path.join(BASEDIR, 'par2')
 
-    # List of file hashes that are supposed to be in the folders:
-    known_files = []
-    for dic in pfiles.values():
-        known_files.extend([entry.split('.')[0] for entry in dic.keys()])
-
-    # Clear out any files that are unknown (probably left over from last session)
-    for folder in os.listdir(par2_dir):
-        if folder in HEXES:
-            for name in os.listdir(os.path.join(par2_dir, folder)):
-                if name.endswith('.par2'):
-                    if not name.split('.')[0] in known_files:
-                        path = os.path.join(par2_dir, folder, name)
-                        print("Removing extraneous file:", path)
-                        os.remove(path)
-                        time.sleep(.1)
-
-
-def gen_par2(new_pars, data2process, pfiles):
+def gen_par2(new_pars, data2process):
     "Rehash files and Generate new .par2 files"
     start_time = tpc()
     rt_start = start_time   # Realtime time start
@@ -336,6 +244,8 @@ def gen_par2(new_pars, data2process, pfiles):
     par_total = 0           # Size of parity generated
     data_total = 0          # Data actually processed into .par2
 
+    # last_save = time.time()   # Last time database was saved
+
     def bps(num):
         return rfs(num, digits=2) + '/s'
 
@@ -343,7 +253,7 @@ def gen_par2(new_pars, data2process, pfiles):
     for count, info in enumerate(new_pars):
         status = 'Processing #' + str(count + 1)
         if data_total > 10e6:
-            status += ' with ' + sig(par_total / data_total * 100, 2)+'% .par2'
+            status += ' with ' + sig(par_total / data_total * 100, 2)+'% parity,'
         if data_seen:
             # rate = data_seen / (time.time() - start_time)
             eta = (data2process - data_seen) / rate
@@ -354,7 +264,7 @@ def gen_par2(new_pars, data2process, pfiles):
 
         data_seen += info.size
         tprint(status, rel_path(info.pathname))
-        par_size = info.generate(pfiles, rehash=True)
+        par_size = info.generate(rehash=True)
         if par_size:
             par_total += par_size
             data_total += info.size
@@ -366,89 +276,49 @@ def gen_par2(new_pars, data2process, pfiles):
             rt_start = tpc()
             rt_data = data_seen
 
+            '''
+            # Future: Save every hour
+            if time.time() - last _save > 3600:
+                save(database, files)
+                last_save = time.time()
+            '''
+
         rate = data_seen / (tpc() - start_time)
 
     tprint("Done. Processed", len(new_pars), 'files in', fmt_time(tpc() - start_time))
 
 
+def rel_path(pathname):
+    "Return path of files relative to target directory"
+    return os.path.relpath(pathname, UARGS['target'])
 
 
-def save_database(par_database, files, pfiles):
-    # Save the database in lzma which adds a nice checksum
-    if files:       # Avoid deleting database if run on wrong folder
+def save(files):
+    if files:
         out = dict()
-        with lzma.open(par_database, mode='wt', check=lzma.CHECK_CRC64, preset=3) as f:
-            for pathname, info in files.items():
-                out[pathname] = vars(info)
-            meta = dict(mtime=time.time(),      # modification time
-                        hash=UARGS['hash'],     # hash choice
-                        encoding='hex',         # encode hash as hexadecimal
-                        truncate=False,         # truncate hash to this many bits
-                        version=1.0,            # Database version
-                       )
-            json.dump([meta, out, pfiles], f)
-
-
-def load_database(par_database):
-    files = dict()      # relative filename to Info
-    pfiles = dict()     # hashes to dict(par file name : hash of par file)
-    par2_dir = os.path.join(BASEDIR, 'par2')
-
-    os.makedirs(BASEDIR, exist_ok=True)
-    os.makedirs(par2_dir, exist_ok=True)
-    # Repository of filenames, hashes, modificaton times and more
-
-
-    # Make data folders if they don't exist
-    folders = []
-    for folder in HEXES:
-        folders.append(folder)
-        os.makedirs(os.path.join(BASEDIR, 'par2', folder), exist_ok=True)
-
-    # Load the database if possible
-    if os.path.exists(par_database):
-        with lzma.open(par_database, mode='rt') as f:
-            meta, files, pfiles = json.load(f)
-            for pathname, info in files.items():
-                files[pathname] = Info(load=info)
-    else:
-        return files, pfiles
-
-
-    if meta['hash'] != UARGS['hash']:
-        print("Hash type for database is", meta['hash'], "not", UARGS['hash'])
-        print("Delete database to change the hash type")
-        sys.exit(1)
-
-    # Rotate the database and delete old versions
-    if time.time() - meta['mtime'] > 3600:
-        copy_name = os.path.splitext(par_database)[0] + '.' + str(int(meta['mtime'])) + '.xz'
-        shutil.copy(par_database, copy_name)
-        names = [name for name in os.listdir(BASEDIR) if name.startswith('database.')]
-        for name in sorted(names)[3:]:
-            os.remove(os.path.join(BASEDIR, name))
-
-    return files, pfiles
+        for pathname, info in files.items():
+            out[pathname] = vars(info)
+        DATABASE.save(out)
 
 
 def main():
-    par_database = os.path.join(BASEDIR, 'database.xz')
-    files, pfiles = load_database(par_database)
-    if UARGS['clean']:
-        clean(pfiles)
 
-    visited = []
-    file_errors = []
-    last_save = time.time()         # Last time database was saved
+    # Load the database
+    files = DATABASE.load() or dict()       # relative filename to Info
+    for pathname, info in files.items():
+        files[pathname] = Info(load=info)
+
+
+    visited = []                    # File names visited
+    file_errors = []                # List of files with errors in them
     start_time = tpc()
-
     new_pars = []                   # Files to calculate .par2
     data2process = 0                # Data left to process into .par2
 
 
     # Walk through file tree looking for files that need to be rehashed
-    print("Scanning file tree:", TARGETDIR)
-    for stat, pathname in walk(TARGETDIR):
+    print("Scanning file tree:", UARGS['target'])
+    for stat, pathname in walk(UARGS['target'], exclude=DATABASE.basedir):
         relpath = rel_path(pathname)
         visited.append(relpath)
         mtime = stat.st_mtime
@@ -466,7 +336,7 @@ def main():
                     file_errors.append(relpath)
                     if UARGS['repair']:
                         print("Attempting repair...")
-                        if info.repair(pfiles):
+                        if info.repair():
                             info.rehash()
                             info.update()
                             file_errors.pop(-1)
@@ -480,15 +350,13 @@ def main():
             new_pars.append(info)
             data2process += info.size
         files[relpath] = info
-        # Save every hour
-        if time.time() - last_save >= 3600:
-            save_database(par_database, files, pfiles)
+
     else:
         tprint()
 
     # Rehash and generate .par2 files for files found earlier
     if new_pars:
-        gen_par2(new_pars, data2process, pfiles)
+        gen_par2(new_pars, data2process)
     else:
         print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
 
@@ -498,15 +366,22 @@ def main():
 
     # Check for files deleted from database
     if UARGS['clean']:
+        DATABASE.clean()
         for pathname in list(files.keys()):
             if pathname not in visited:
                 qprint("Filename not found in folder:", pathname)
                 del files[pathname]
 
+    if UARGS['verify']:
+        DATABASE.verify()
 
-    save_database(par_database, files, pfiles)
+
+
+    save(files)
     if file_errors:
-        sys.exit(1)
+        return False
+    return True
+
 
 # Future ideas:
 # Save files under 4k as a copy instead of using .par2
@@ -514,16 +389,12 @@ def main():
 # verify should check pardatabase hashes too
 
 if __name__ == "__main__":
+    UARGS = parse_args()            # User argument
+    if not UARGS:
+        sys.exit(1)
+    DATABASE = HexBase(basedir=UARGS['basedir'])
+
     if not shutil.which('par2'):
         print("Please install par2 to continue")
         sys.exit(1)
-
-    UARGS = parse_args()            # User arguments
-    if not UARGS:
-        sys.exit(1)
-
-    BASEDIR = UARGS['basedir']
-    TARGETDIR = UARGS['target']
-    HASHFUNC = getattr(hashlib, UARGS['hash'], hashlib.sha512)
-
-    main()
+    sys.exit(int(not main()))
