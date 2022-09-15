@@ -11,7 +11,7 @@ import subprocess
 from time import perf_counter as tpc
 from hexbase import HexBase
 from sd.easy_args import easy_parse
-from sd.common import fmt_time, rfs, sig
+from sd.common import fmt_time, rfs, sig, ConvertDataSize
 
 
 def tprint(*args, **kargs):
@@ -55,6 +55,16 @@ def parse_args():
     ['hash', '', str, 'sha512'],
     "Hash function to use",
     ['clean', '', bool],
+    ['min', '', str, ''],
+    '''
+    Minimum file size to check
+    Example: --min 4k
+    ''',
+    ['max', '', str, ''],
+    '''
+    Maximum file size to check
+    Example: --max 1G
+    ''',
     "Clean database of extraneous files",
     ['options', '', str],
     '''Options passed onto par2 program. Add quotes"
@@ -104,6 +114,13 @@ def parse_args():
 
     args['basedir'] = os.path.realpath(basedir)
     args['target'] = os.path.realpath(target)
+
+
+    # Convert user data sizes
+    if args['min']:
+        args['min'] = ConvertDataSize()(args['min'])
+    if args['max']:
+        args['max'] = ConvertDataSize()(args['max'])
 
     return args
 
@@ -212,8 +229,9 @@ class Info:
 
 
 
-def walk(dirname, exclude):
+def walk(dirname, exclude, minimum=1, maximum=0):
     "Walk through directory returning entry and pathname"
+    minimum = max(minimum, 1)       # Min size must be 1 byte to work
     for entry in os.scandir(dirname):
         if entry.is_symlink():
             continue
@@ -226,10 +244,15 @@ def walk(dirname, exclude):
         if entry.is_dir():
             if not pathname == exclude:
                 yield from walk(pathname, exclude)
+
         else:
             stat = entry.stat()
-            if stat.st_size > 0:
-                yield stat, pathname
+            size = stat.st_size
+            if size < minimum:
+                continue
+            if maximum and size > maximum:
+                continue
+            yield stat, pathname
 
 
 
@@ -318,7 +341,9 @@ def main():
 
     # Walk through file tree looking for files that need to be rehashed
     print("Scanning file tree:", UARGS['target'])
-    for stat, pathname in walk(UARGS['target'], exclude=DATABASE.basedir):
+    minimum = UARGS['min'] or 1
+    maximum = UARGS['max'] or 0
+    for stat, pathname in walk(UARGS['target'], exclude=DATABASE.basedir, minimum=minimum, maximum=maximum):
         relpath = rel_path(pathname)
         visited.append(relpath)
         mtime = stat.st_mtime
