@@ -13,14 +13,23 @@ from hexbase import HexBase
 from sd.easy_args import easy_parse
 from sd.common import fmt_time, rfs, sig, ConvertDataSize
 
+def tprint(*args, newline=False, **kargs):
+    '''
+    Terminal print: Erasable text in terminal
+    newline = True will leave the text on the line
+    '''
 
-def tprint(*args, **kargs):
-    "Terminal print: Erasable text in terminal"
     term_width = shutil.get_terminal_size()[0]      # 2.5 microseconds
     text = ' '.join(map(str, args))
     if len(text) > term_width:
         text = text[:term_width-3] + '...'
-    print('\r' * term_width + text, **kargs, end=' ' * (term_width - len(text)))
+
+    # Filling out the end of the line with spaces ensures that if something else prints it will not be mangled
+    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='' if not newline else '\n')
+
+
+def oprint(*args, **kargs):
+    tprint(*args, newline=True, **kargs)
 
 
 def qprint(*args, **kargs):
@@ -202,10 +211,9 @@ class Info:
 
             # Delete leftover .par2 files
             for name in find_tmp(cwd):
-                print("Overwriting existing par2 file:", rel_path(os.path.join(cwd, name)))
+                oprint("Overwriting existing par2 file:", rel_path(os.path.join(cwd, name)))
                 time.sleep(.1)
                 os.remove(os.path.join(cwd, name))
-
 
             # Run par2 command
             cmd = "par2 create -n1 -qq".split()
@@ -213,10 +221,15 @@ class Info:
             if options:
                 cmd.extend(('-'+options).split())
             cmd += ['-a', basename + '.par2', '--', os.path.basename(self.pathname)]
-            ret = subprocess.Popen(cmd, cwd=cwd)
+            ret = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
+
             if rehash or not self.hash:
                 self.hash = DATABASE.get_hash(self.pathname)
+                # File read error
+                if not self.hash:
+                    return 0
             code = ret.wait()
+
             if code:
                 return 0
 
@@ -267,7 +280,7 @@ def gen_par2(new_pars, data2process):
     par_total = 0           # Size of parity generated
     data_total = 0          # Data actually processed into .par2
 
-    # last_save = time.time()   # Last time database was saved
+    last_save = time.time() # Last time database was saved
 
     def bps(num):
         return rfs(num, digits=2) + '/s'
@@ -287,7 +300,9 @@ def gen_par2(new_pars, data2process):
 
         data_seen += info.size
         tprint(status, rel_path(info.pathname))
+
         par_size = info.generate(rehash=True)
+        # rate = 200; time.sleep(1); tprint('erased'); time.sleep(1); continue
         if par_size:
             par_total += par_size
             data_total += info.size
@@ -299,12 +314,10 @@ def gen_par2(new_pars, data2process):
             rt_start = tpc()
             rt_data = data_seen
 
-            '''
-            # Future: Save every hour
-            if time.time() - last _save > 3600:
-                save(database, files)
+            # Save every hour
+            if time.time() - last_save >= 3600:
+                DATABASE.save()
                 last_save = time.time()
-            '''
 
         rate = data_seen / (tpc() - start_time)
 
@@ -316,18 +329,11 @@ def rel_path(pathname):
     return os.path.relpath(pathname, UARGS['target'])
 
 
-def save(files):
-    if files:
-        out = dict()
-        for pathname, info in files.items():
-            out[pathname] = vars(info)
-        DATABASE.save(out)
-
-
 def main():
 
     # Load the database
-    files = DATABASE.load() or dict()       # relative filename to Info
+    DATABASE.load()
+    files = DATABASE.data                       # relative filename to Info
     for pathname, info in files.items():
         files[pathname] = Info(load=info)
 
@@ -385,6 +391,11 @@ def main():
     else:
         print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
 
+    # Look for file with errors
+    for filename, info in list(files.items()):
+        if not info.hash:
+            del files[filename]
+            file_errors.append(filename)
     if file_errors:
         print("\n\nWARNING! THE FOLLOWING FILES HAD ERRORS:")
         print('\n'.join(file_errors))
@@ -400,9 +411,7 @@ def main():
     if UARGS['verify']:
         DATABASE.verify()
 
-
-
-    save(files)
+    DATABASE.save()
     if file_errors:
         return False
     return True

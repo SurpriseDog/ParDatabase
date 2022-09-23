@@ -30,6 +30,7 @@ class HexBase:
         # Repository of filenames, hashes, modificaton times and more
         self.index = os.path.join(basedir, basedirname, 'database.xz')
         self.pfiles = dict()                    # hashes to dict(par file name : hash of par file)
+        self.data = dict()                      # Anything that can be serialized into json
 
         self.hashfunc = hashlib.sha512
         self.hashname = None                    # Custom user hash
@@ -38,6 +39,7 @@ class HexBase:
 
 
     def print(self,):
+        print('data      ', type(self.data), len(self.data))
         print('index     ', self.index)
         print('basedir   ', self.basedir)
         print('pfiles    ', len(self.pfiles))
@@ -52,10 +54,9 @@ class HexBase:
             os.makedirs(self.locate(folder), exist_ok=True)
 
         # Load the database if possible
-        data = None
         if os.path.exists(self.index):
             with lzma.open(self.index, mode='rt') as f:
-                meta, data, self.pfiles = json.load(f)
+                meta, self.data, self.pfiles = json.load(f)
                 if meta['hash']:
                     self.hashname = meta['hash']
 
@@ -74,10 +75,8 @@ class HexBase:
         if self.hashname:
             self.hashfunc = vars(hashlib)[self.hashname]
 
-        return data
 
-
-    def save(self, data):
+    def save(self):
         "Save the database in lzma which adds a nice checksum"
         with lzma.open(self.index, mode='wt', check=lzma.CHECK_CRC64, preset=3) as f:
             meta = dict(mtime=time.time(),      # modification time
@@ -86,7 +85,12 @@ class HexBase:
                         truncate=False,         # truncate hash to this many bits
                         version=1.0,            # Database version
                        )
-            json.dump([meta, data, self.pfiles], f)
+
+
+            out = dict()
+            for key, val in self.data.items():
+                out[key] = vars(val)
+            json.dump([meta, out, self.pfiles], f)
 
 
     def clean(self,):
@@ -168,7 +172,11 @@ class HexBase:
         m = self.hashfunc()
         with open(path, 'rb') as f:
             while True:
-                data = f.read(chunk)
+                try:
+                    data = f.read(chunk)
+                except IOError as err:
+                    print(err)
+                    return None
                 if data:
                     m.update(data)
                 else:
