@@ -256,7 +256,7 @@ def walk(dirname, exclude, minimum=1, maximum=0):
             continue
         if entry.is_dir():
             if not pathname == exclude:
-                yield from walk(pathname, exclude)
+                yield from walk(pathname, exclude, minimum, maximum)
 
         else:
             stat = entry.stat()
