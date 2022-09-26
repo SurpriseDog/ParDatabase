@@ -14,6 +14,15 @@ from hexbase import HexBase
 from sd.easy_args import easy_parse
 from sd.common import fmt_time, rfs, sig, ConvertDataSize
 
+
+# Run self with ionice if available
+try:
+    import psutil
+    psutil.Process().ionice(psutil.IOPRIO_CLASS_IDLE)
+except ModuleNotFoundError:
+    print("Install psutil with: pip3 install psutil")
+    print("to automatically reduce the io impact of this program.\n\n")
+
 def tprint(*args, newline=False, **kargs):
     '''
     Terminal print: Erasable text in terminal
@@ -380,7 +389,7 @@ def main():
     files = DATABASE.data                       # relative filename to Info
     if files:
         print("Sucessfully loaded info on", len(files), 'files')
-        print("Database was last saved", fmt_time(time.time() - DATABASE.last_save), 'ago.\n\n')
+        print("Database was last saved", fmt_time(time.time() - DATABASE.last_save), 'ago.')
 
     for pathname, info in files.items():
         files[pathname] = Info(load=info)
@@ -394,7 +403,7 @@ def main():
 
 
     # Walk through file tree looking for files that need to be rehashed
-    print("Scanning file tree:", UARGS['target'])
+    print("\nScanning file tree:", UARGS['target'])
     minimum = UARGS['min'] or 1
     maximum = UARGS['max'] or 0
     for stat, pathname in walk(UARGS['target'], exclude=DATABASE.basedir, minimum=minimum, maximum=maximum):
@@ -478,4 +487,5 @@ if __name__ == "__main__":
     if not shutil.which('par2'):
         print("Please install par2 to continue")
         sys.exit(1)
+
     sys.exit(int(not main()))

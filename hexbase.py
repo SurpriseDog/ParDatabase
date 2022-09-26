@@ -170,7 +170,7 @@ class HexBase:
 
 
 
-    def get_hash(self, path, chunk=1024**2):
+    def get_hash(self, path, chunk=4 * 1024 * 1024):
         "Get sha512 of filename"
         m = self.hashfunc()
         with open(path, 'rb') as f:
