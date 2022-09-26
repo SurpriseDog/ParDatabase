@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import shutil
+import signal
 import hashlib
 import subprocess
 from time import perf_counter as tpc
@@ -160,7 +161,6 @@ def find_tmp(cwd, basename=''):
             yield name
 
 
-
 class Info:
     "Info on filepaths within system"
 
@@ -224,14 +224,35 @@ class Info:
             return 0
         else:
 
+
             cwd = os.path.dirname(self.pathname)
             basename = '.pardatabase_tmp_file'
+            ret = None
 
-            # Delete leftover .par2 files
-            for name in find_tmp(cwd):
-                oprint("Overwriting existing par2 file:", rel_path(os.path.join(cwd, name)))
-                time.sleep(.1)
-                os.remove(os.path.join(cwd, name))
+            def remove_existing():
+                "Delete leftover .par2 files"
+                for name in find_tmp(cwd):
+                    qprint("Removing existing par2 file:", rel_path(os.path.join(cwd, name)))
+                    os.remove(os.path.join(cwd, name))
+
+            def check_hash():
+                if rehash or not self.hash:
+                    self.hash = get_hash(self.pathname)
+
+            def interrupt(*_):
+                print("\n\nCaught ctrl-c!")
+                if ret:
+                    ret.kill()
+                print("Saving database, please wait...")
+                DATABASE.save()
+                remove_existing()
+                print("Done")
+                sys.exit(0)
+
+
+            signal.signal(signal.SIGINT, interrupt)
+            remove_existing()
+
 
             # Run par2 command
             cmd = "par2 create -n1 -qq".split()
@@ -241,23 +262,21 @@ class Info:
             cmd += ['-a', basename + '.par2', '--', os.path.basename(self.pathname)]
             ret = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
 
-            def check_hash():
-                if rehash or not self.hash:
-                    self.hash = get_hash(self.pathname)
 
-            # finish before get_hash in sequential mode or run in parallel
+            # Finish before get_hash in sequential mode or run in parallel
             if UARGS['sequential']:
                 code = ret.wait()
                 check_hash()
             else:
                 check_hash()
                 code = ret.wait()
+            signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
 
             # File read error or par2 error
             if not self.hash or code:
                 return 0
 
-
+            # Move files into database:
             total_size = 0                          # Running count of total .par2 size
             for name in find_tmp(cwd, basename):
                 src = os.path.join(cwd, name)
@@ -359,6 +378,10 @@ def main():
     # Load the database
     DATABASE.load()
     files = DATABASE.data                       # relative filename to Info
+    if files:
+        print("Sucessfully loaded info on", len(files), 'files')
+        print("Database was last saved", fmt_time(time.time() - DATABASE.last_save), 'ago.\n\n')
+
     for pathname, info in files.items():
         files[pathname] = Info(load=info)
 
@@ -381,8 +404,7 @@ def main():
         if relpath in files:
             info = files[relpath]
             info.pathname = pathname
-            if mtime > info.mtime:
-                # tprint("File changed:", relpath)
+            if mtime > info.mtime or not info.hash:
                 new_pars.append(info)
                 data2process += info.size
             elif UARGS['verify'] or UARGS['repair']:

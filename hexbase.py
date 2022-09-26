@@ -31,6 +31,7 @@ class HexBase:
         self.index = os.path.join(basedir, basedirname, 'database.xz')
         self.pfiles = dict()                    # hashes to dict(par file name : hash of par file)
         self.data = dict()                      # Anything that can be serialized into json
+        self.last_save = 0                      # Last save time
 
         self.hashfunc = hashlib.sha512
         self.hashname = None                    # Custom user hash
@@ -59,15 +60,8 @@ class HexBase:
                 meta, self.data, self.pfiles = json.load(f)
                 if meta['hash']:
                     self.hashname = meta['hash']
+                self.last_save = meta['mtime']
 
-
-            # Rotate the database and delete old versions
-            if time.time() - meta['mtime'] > 3600:
-                copy_name = os.path.splitext(self.index)[0] + '.' + str(int(meta['mtime'])) + '.xz'
-                shutil.copy(self.index, copy_name)
-                names = [name for name in os.listdir(self.basedir) if name.startswith('database.')]
-                for name in sorted(names)[3:]:
-                    os.remove(os.path.join(self.basedir, name))
         else:
             if hashname:
                 self.hashname = hashname
@@ -78,6 +72,14 @@ class HexBase:
 
     def save(self):
         "Save the database in lzma which adds a nice checksum"
+        # Rotate the database and delete old versions
+        if os.path.exists(self.index) and time.time() - self.last_save > 3600 * 8:
+            copy_name = os.path.splitext(self.index)[0] + '.' + str(int(self.last_save)) + '.xz'
+            shutil.copy(self.index, copy_name)
+            names = [name for name in os.listdir(self.basedir) if name.startswith('database.')]
+            for name in sorted(names)[3:]:
+                os.remove(os.path.join(self.basedir, name))
+
         with lzma.open(self.index, mode='wt', check=lzma.CHECK_CRC64, preset=3) as f:
             meta = dict(mtime=time.time(),      # modification time
                         hash=self.hashname,     # hash choice
@@ -91,6 +93,7 @@ class HexBase:
             for key, val in self.data.items():
                 out[key] = vars(val)
             json.dump([meta, out, self.pfiles], f)
+            self.last_save = time.time()
 
 
     def clean(self,):
@@ -131,7 +134,7 @@ class HexBase:
 
         # print('put', src, dest); input()
         if os.path.exists(dest):
-            print("Overwriting existing file:", dest)
+            # print("Overwriting existing file:", dest)
             os.remove(dest)
         shutil.move(src, dest)
         if fhash not in self.pfiles:
