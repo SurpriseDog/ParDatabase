@@ -81,6 +81,8 @@ class ArgMaster():
                 if self.exit:
                     sys.exit(0)
                 return None
+
+        # Try to parse the arguments and show help if failed
         try:
             if self.intermixed:
                 return self.parser.parse_intermixed_args(args)
@@ -215,11 +217,11 @@ class ArgMaster():
                                             nargs=nargs, help=msg, metavar='')
                 out.append(dict(alias=alias, dest=varname, typ=typ, default=default, msg=msg))
                 if self.verbose:
-                    print('alias  :', alias)
-                    print('dest   :', varname)
-                    print('default:', default)
-                    print('type   :', typ)
-                    print('nargs  :', nargs, '\n\n')
+                    print('alias  :', repr(alias))
+                    print('dest   :', repr(varname))
+                    print('default:', repr(default))
+                    print('type   :', repr(typ))
+                    print('nargs  :', repr(nargs), '\n\n')
 
         for index, args in enumerate(lines):
 
@@ -265,7 +267,8 @@ class ArgMaster():
             if typ == list or type(typ) == int:
                 default = list_get(args, 3, [])
             else:
-                default = list_get(args, 3, '')
+                default = list_get(args, 3, None)
+
 
 
             # Argument Type and number required

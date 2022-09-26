@@ -64,12 +64,12 @@ def parse_args():
     ['hash', '', str, 'sha512'],
     "Hash function to use",
     ['clean', '', bool],
-    ['min', '', str, ''],
+    ['min', '', str],
     '''
     Minimum file size to check
     Example: --min 4k
     ''',
-    ['max', '', str, ''],
+    ['max', '', str],
     '''
     Maximum file size to check
     Example: --max 1G
@@ -79,6 +79,10 @@ def parse_args():
     '''Options passed onto par2 program. Add quotes"
     For example "-r5" will set the target recovery percentage at 5%
     More options can be found by typing: man par2''',
+    ['sequential', '', bool],
+    "Hash the file before running par2 (instead of running in parallel)",
+    ['delay', '', float],
+    "Wait for (delay * read_time) after every read to keep drive running cooler.",
     ['verify', '', bool],
     "Verify existing files by comparing the hash",
     ['repair', '', bool],
@@ -126,12 +130,26 @@ def parse_args():
 
 
     # Convert user data sizes
-    if args['min']:
-        args['min'] = ConvertDataSize()(args['min'])
-    if args['max']:
-        args['max'] = ConvertDataSize()(args['max'])
+    for arg in 'min max'.split():
+        if args[arg]:
+            args[arg] = ConvertDataSize()(args[arg])
 
     return args
+
+
+def get_hash(path):
+    "Hash a file and optionall sleep for delay * read_time"
+    delay = UARGS['delay']
+    if not delay:
+        return DATABASE.get_hash(path)
+    else:
+        start = tpc()
+        result = DATABASE.get_hash(path)
+        delay = (tpc() - start) * delay
+        tprint("Sleeping for...", fmt_time(delay))
+        time.sleep(delay)
+        return result
+
 
 
 
@@ -161,7 +179,7 @@ class Info:
 
     def verify(self,):
         "Verify file is correct or generate new one"
-        return bool(self.hash == DATABASE.get_hash(self.pathname))
+        return bool(self.hash == get_hash(self.pathname))
 
 
     def update(self,):
@@ -172,7 +190,7 @@ class Info:
 
     def rehash(self,):
         "Rehash the file"
-        self.hash = DATABASE.get_hash(self.pathname)
+        self.hash = get_hash(self.pathname)
 
 
     def repair(self):
@@ -223,15 +241,22 @@ class Info:
             cmd += ['-a', basename + '.par2', '--', os.path.basename(self.pathname)]
             ret = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
 
-            if rehash or not self.hash:
-                self.hash = DATABASE.get_hash(self.pathname)
-                # File read error
-                if not self.hash:
-                    return 0
-            code = ret.wait()
+            def check_hash():
+                if rehash or not self.hash:
+                    self.hash = get_hash(self.pathname)
 
-            if code:
+            # finish before get_hash in sequential mode or run in parallel
+            if UARGS['sequential']:
+                code = ret.wait()
+                check_hash()
+            else:
+                check_hash()
+                code = ret.wait()
+
+            # File read error or par2 error
+            if not self.hash or code:
                 return 0
+
 
             total_size = 0                          # Running count of total .par2 size
             for name in find_tmp(cwd, basename):
@@ -274,7 +299,7 @@ def gen_par2(new_pars, data2process):
     start_time = tpc()
     rt_start = start_time   # Realtime time start
     rt_data = 0             # Realtime data start
-    rt_rate = 0
+    rt_rate = 0             # Realtime data rate (over at least 4 seconds of data)
 
     data_seen = 0           # Data processed
     par_total = 0           # Size of parity generated
@@ -289,7 +314,7 @@ def gen_par2(new_pars, data2process):
     for count, info in enumerate(new_pars):
         status = 'Processing #' + str(count + 1)
         if data_total > 10e6:
-            status += ' with ' + sig(par_total / data_total * 100, 2)+'% parity,'
+            status += ' with ' + sig(par_total / data_total * 100, 2)+'% parity'
         if data_seen:
             # rate = data_seen / (time.time() - start_time)
             eta = (data2process - data_seen) / rate
