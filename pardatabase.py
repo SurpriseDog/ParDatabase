@@ -23,7 +23,7 @@ except ModuleNotFoundError:
     print("Install psutil with: pip3 install psutil")
     print("to automatically reduce the io impact of this program.\n\n")
 
-def tprint(*args, newline=False, **kargs):
+def tprint(*args, **kargs):
     '''
     Terminal print: Erasable text in terminal
     newline = True will leave the text on the line
@@ -35,11 +35,7 @@ def tprint(*args, newline=False, **kargs):
         text = text[:term_width-3] + '...'
 
     # Filling out the end of the line with spaces ensures that if something else prints it will not be mangled
-    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='' if not newline else '\n')
-
-
-def oprint(*args, **kargs):
-    tprint(*args, newline=True, **kargs)
+    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='')
 
 
 def qprint(*args, **kargs):
@@ -282,6 +278,8 @@ class Info:
             signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
 
             # File read error or par2 error
+            if code:
+                print("par2 returned code:", code)
             if not self.hash or code:
                 return 0
 
@@ -338,7 +336,6 @@ def gen_par2(new_pars, data2process):
     def bps(num):
         return rfs(num, digits=2) + '/s'
 
-    print("Creating parity for", len(new_pars), 'files spanning', rfs(data2process))
     for count, info in enumerate(new_pars):
         status = 'Processing #' + str(count + 1)
         if data_total > 10e6:
@@ -377,6 +374,27 @@ def gen_par2(new_pars, data2process):
     tprint("Done. Processed", len(new_pars), 'files in', fmt_time(tpc() - start_time))
 
 
+def verify(files, repair=False):
+    "Verify and repair files in directory"
+    file_errors = []
+
+    for relpath, info in files.items():
+        tprint("Verifying file:", relpath)
+        if not info.verify():
+            print("\n\nError in file!", relpath)
+            file_errors.append(relpath)
+            if repair:
+                print("Attempting repair...")
+                if info.repair():
+                    info.rehash()
+                    info.update()
+                    file_errors.pop(-1)
+                    print("File fixed!\n\n")
+        else:
+            info.update()
+    return file_errors
+
+
 def rel_path(pathname):
     "Return path of files relative to target directory"
     return os.path.relpath(pathname, UARGS['target'])
@@ -396,13 +414,12 @@ def main():
 
 
     visited = []                    # File names visited
-    file_errors = []                # List of files with errors in them
     start_time = tpc()
     new_pars = []                   # Files to calculate .par2
     data2process = 0                # Data left to process into .par2
 
 
-    # Walk through file tree looking for files that need to be rehashed
+    # Walk through file tree looking for files that need to be processed
     print("\nScanning file tree:", UARGS['target'])
     minimum = UARGS['min'] or 1
     maximum = UARGS['max'] or 0
@@ -416,45 +433,19 @@ def main():
             if mtime > info.mtime or not info.hash:
                 new_pars.append(info)
                 data2process += info.size
-            elif UARGS['verify'] or UARGS['repair']:
-                tprint("Verifying file:", relpath)
-                if not info.verify():
-                    print("\n\nError in file!", relpath)
-                    file_errors.append(relpath)
-                    if UARGS['repair']:
-                        print("Attempting repair...")
-                        if info.repair():
-                            info.rehash()
-                            info.update()
-                            file_errors.pop(-1)
-                            print("File fixed!\n\n")
-                else:
-                    info.update()
-
         else:
-            # tprint("New file:", relpath)
             info = Info(pathname)
             new_pars.append(info)
             data2process += info.size
         files[relpath] = info
+    print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
 
-    else:
-        tprint()
 
     # Rehash and generate .par2 files for files found earlier
     if new_pars:
+        print("\nCreating parity for", len(new_pars), 'files spanning', rfs(data2process))
         gen_par2(new_pars, data2process)
-    else:
-        print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
 
-    # Look for file with errors
-    for filename, info in list(files.items()):
-        if not info.hash:
-            del files[filename]
-            file_errors.append(filename)
-    if file_errors:
-        print("\n\nWARNING! THE FOLLOWING FILES HAD ERRORS:")
-        print('\n'.join(file_errors))
 
     # Check for files deleted from database
     if UARGS['clean']:
@@ -464,8 +455,25 @@ def main():
                 qprint("Filename not found in folder:", pathname)
                 del files[pathname]
 
+
+    # Verify files in database
     if UARGS['verify']:
         DATABASE.verify()
+
+
+    # Look for files with errors
+    file_errors = []                # List of files with errors in them
+    if UARGS['verify'] or UARGS['repair']:
+        file_errors = verify(files, repair=UARGS['repair'])
+
+
+    # Look for files with missing hashes (caused by io errors while reading
+    for filename, info in list(files.items()):
+        if not info.hash:
+            file_errors.append(filename)
+    if file_errors:
+        print("\n\nWARNING! THE FOLLOWING FILES HAD ERRORS:")
+        print('\n'.join(file_errors))
 
     DATABASE.save()
     if file_errors:
@@ -476,7 +484,7 @@ def main():
 # Future ideas:
 # Save files under 4k as a copy instead of using .par2
 # Store files under 10k in sqlite instead of on disk
-# verify should check pardatabase hashes too
+
 
 if __name__ == "__main__":
     UARGS = parse_args()            # User argument

@@ -82,6 +82,7 @@ class HexBase:
                 copy_name = os.path.splitext(self.index)[0] + '.' + str(int(self.last_save)) + '.xz'
                 shutil.copy(self.index, copy_name)
                 for name in sorted(existing)[3:]:
+                    print("Removing old database file:", name)
                     os.remove(os.path.join(self.basedir, name))
 
         # Save to file

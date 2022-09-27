@@ -3,16 +3,88 @@
 # To see how this file was created visit: https://github.com/SurpriseDog/Star-Wrangler
 
 import math
-import time
-import queue
 import datetime
-import threading
 from shutil import get_terminal_size
 
 
 def undent(text, tab=''):
     "Remove whitespace at the beginning of lines of text"
     return '\n'.join([tab + line.lstrip() for line in text.splitlines()])
+
+
+def _fit_in_width(col_width, max_width):
+    "Adjust array of column widths to fit inside a maximum"
+    extra = sum(col_width) - max_width          # Amount columns exceed the terminal width
+
+    def fill_remainder():
+        "After operation to reduce column sizes, use up any remaining space"
+        remain = max_width - sum(col_width)
+        for x, _ in enumerate(col_width):
+            if remain:
+                col_width[x] += 1
+                remain -= 1
+
+    # Reduce column widths to fit in terminal
+    if extra > 0:
+        if max(col_width) > 0.5 * sum(col_width):
+            # If there's one large column, reduce it
+            index = col_width.index(max(col_width))
+            col_width[index] -= extra
+            if col_width[index] < max_width // len(col_width):
+                # However if that's not enough reduce all columns equally
+                col_width = [max_width // len(col_width)] * len(col_width)
+                fill_remainder()
+        else:
+            # Otherwise reduce all columns proportionally
+            col_width = [int(width * (max_width / (max_width + extra))) for width in col_width]
+            fill_remainder()
+        # print(col_width, '=', sum(col_width))
+    return col_width
+
+
+def crop_columns(array, crop):
+    "Given a 2d array, crop any cell which exceeds the crop value and append ..."
+    out = []
+    for row in array:
+        line = []
+        for index, item in enumerate(row):
+            cut = crop.get(index, 0)
+            length = len(item)
+            if length > cut > 3:
+                line.append(item[:cut-3]+'...')
+            elif cut > 0:
+                line.append(item[:cut])
+            else:
+                line.append(item)
+        out.append(line)
+    return out
+
+
+def expand_newlines(line):
+    "Take a list with newlines in it and split into 2d array while maintaining column position"
+    out = [[''] * len(line)]
+    for x, section in enumerate(line):
+        if '\n' in section:
+            for y, elem in enumerate(section.split('\n')):
+                if y >= len(out):
+                    out.append([''] * len(line))
+                out[y][x] = elem
+        else:
+            out[0][x] = section
+    return out
+
+
+def _just2func(just):
+    "Given a justification of left, right, center : convert to function"
+    j = just.lower()[0]
+    if j == 'l':
+        return str.ljust
+    elif j == 'r':
+        return str.rjust
+    elif j == 'c':
+        return str.center
+    else:
+        raise ValueError("Cannot understand justification:", just)
 
 
 def indenter(*args, header='', level=0, tab=4, wrap=-4, even=False):
@@ -94,36 +166,6 @@ def print_columns(args, col_width=20, columns=None, just='left', space=0, wrap=T
         print_columns(line, col_width, columns, just, space, wrap=False)
 
 
-def _fit_in_width(col_width, max_width):
-    "Adjust array of column widths to fit inside a maximum"
-    extra = sum(col_width) - max_width          # Amount columns exceed the terminal width
-
-    def fill_remainder():
-        "After operation to reduce column sizes, use up any remaining space"
-        remain = max_width - sum(col_width)
-        for x, _ in enumerate(col_width):
-            if remain:
-                col_width[x] += 1
-                remain -= 1
-
-    # Reduce column widths to fit in terminal
-    if extra > 0:
-        if max(col_width) > 0.5 * sum(col_width):
-            # If there's one large column, reduce it
-            index = col_width.index(max(col_width))
-            col_width[index] -= extra
-            if col_width[index] < max_width // len(col_width):
-                # However if that's not enough reduce all columns equally
-                col_width = [max_width // len(col_width)] * len(col_width)
-                fill_remainder()
-        else:
-            # Otherwise reduce all columns proportionally
-            col_width = [int(width * (max_width / (max_width + extra))) for width in col_width]
-            fill_remainder()
-        # print(col_width, '=', sum(col_width))
-    return col_width
-
-
 def map_nested(func, array):
     "Apply a function to a nested array and return it"
     out = []
@@ -132,51 +174,6 @@ def map_nested(func, array):
             out.append(func(item))
         else:
             out.append(map_nested(func, item))
-    return out
-
-
-def expand_newlines(line):
-    "Take a list with newlines in it and split into 2d array while maintaining column position"
-    out = [[''] * len(line)]
-    for x, section in enumerate(line):
-        if '\n' in section:
-            for y, elem in enumerate(section.split('\n')):
-                if y >= len(out):
-                    out.append([''] * len(line))
-                out[y][x] = elem
-        else:
-            out[0][x] = section
-    return out
-
-
-def _just2func(just):
-    "Given a justification of left, right, center : convert to function"
-    j = just.lower()[0]
-    if j == 'l':
-        return str.ljust
-    elif j == 'r':
-        return str.rjust
-    elif j == 'c':
-        return str.center
-    else:
-        raise ValueError("Cannot understand justification:", just)
-
-
-def crop_columns(array, crop):
-    "Given a 2d array, crop any cell which exceeds the crop value and append ..."
-    out = []
-    for row in array:
-        line = []
-        for index, item in enumerate(row):
-            cut = crop.get(index, 0)
-            length = len(item)
-            if length > cut > 3:
-                line.append(item[:cut-3]+'...')
-            elif cut > 0:
-                line.append(item[:cut])
-            else:
-                line.append(item)
-        out.append(line)
     return out
 
 
@@ -269,27 +266,74 @@ def list_get(lis, index, default=''):
         return default
 
 
-def spawn(func, *args, daemon=True, delay=0, **kargs):
-    '''Spawn a function to run seperately and return the que
-    waits for delay seconds before running
-    Get the results with que.get()
-    daemon = running in background, will shutdown automatically when main thread exits
-    Check if the thread is still running with thread.is_alive()
-    print('func=', func, id(func))'''
-    # replaces fork_cmd, mcall
+def is_num(num):
+    "Is the string a number?"
+    if str(num).strip().replace('.', '', 1).replace('e', '', 1).isdigit():
+        return True
+    return False
 
-    def worker():
-        if delay:
-            time.sleep(delay)
-        ret = func(*args, **kargs)
-        que.put(ret)
 
-    que = queue.Queue()
-    # print('args=', args)
-    thread = threading.Thread(target=worker)
-    thread.daemon = daemon
-    thread.start()
-    return que, thread
+class ConvertDataSize():
+    '''
+    Convert data size. Given a user input size like
+    "80%+10G -1M" = 80% of the blocksize + 10 gigabytes - 1 Megabyte
+    '''
+
+    def __init__(self, blocksize=1e9, binary_prefix=1000, rounding=0):
+        self.blocksize = blocksize                  # Device blocksize for multiplying by a percentage
+        self.binary_prefix = binary_prefix          # 1000 or 1024 byte kilobytes
+        self.rounding = rounding                    # Round to sector sizes
+
+    def _process(self, arg):
+        arg = arg.strip().upper().replace('B', '')
+        if not arg:
+            return 0
+
+        start = arg[0]
+        end = arg[-1]
+
+        if start == '-':
+            return self.blocksize - self._process(arg[1:])
+
+        if '+' in arg:
+            return sum(map(self._process, arg.split('+')))
+
+        if '-' in arg:
+            args = arg.split('-')
+            val = self._process(args.pop(0))
+            for a in args:
+                val -= self._process(a)
+                return val
+
+        if end in 'KMGTPEZY':
+            return self._process(arg[:-1]) * self.binary_prefix ** (' KMGTPEZY'.index(end))
+
+        if end == '%':
+            if arg.count('%') > 1:
+                raise ValueError("Extra % in arg:", arg)        # pylint: disable=W0715
+            arg = float(arg[:-1])
+            if not 0 <= arg <= 100:
+                print("Percentages must be between 0 and 100, not", str(arg) + '%')
+                return None
+            else:
+                return int(arg / 100 * self.blocksize)
+
+        if is_num(arg):
+            return float(arg)
+        else:
+            print("Could not understand arg:", arg)
+            return None
+
+    def __call__(self, arg):
+        "Pass string to convert"
+        val = self._process(arg)
+        if val is None:
+            return None
+        val = int(val)
+        if self.rounding:
+            return val // self.rounding * self.rounding
+        else:
+            return val
 
 
 def rfs(num, mult=1000, digits=3, order=' KMGTPEZYB', suffix='B', space=' '):
@@ -321,26 +365,6 @@ def rfs(num, mult=1000, digits=3, order=' KMGTPEZYB', suffix='B', space=' '):
     return str(num) + suffix        # Never called, but needed for pylint
 
 
-def fmt_clock(num, smallest=None):
-    '''
-    Format in 9:12 format
-    smallest    = smallest units for non pretty printing
-    '''
-    # Normal "2:40" style format
-    num = int(num)
-    s = str(datetime.timedelta(seconds=num))
-    if num < 3600:
-        s = s[2:]  # .lstrip('0')
-
-    # Strip smaller units
-    if smallest == 'minutes' or (not smallest and num >= 3600):
-        return s[:-3]
-    elif smallest == 'hours':
-        return s[:-6] + ' hours'
-    else:
-        return s
-
-
 def bisect_small(lis, num):
     '''Given a sorted list, returns the index of the biggest number <= than num
     Unlike bisect will never return an index which doesn't exist'''
@@ -367,6 +391,26 @@ def sig(num, digits=3):
         return negative + ('{0:.' + str(digits) + 'g}').format(num)
     else:
         return negative + str(int(num))
+
+
+def fmt_clock(num, smallest=None):
+    '''
+    Format in 9:12 format
+    smallest    = smallest units for non pretty printing
+    '''
+    # Normal "2:40" style format
+    num = int(num)
+    s = str(datetime.timedelta(seconds=num))
+    if num < 3600:
+        s = s[2:]  # .lstrip('0')
+
+    # Strip smaller units
+    if smallest == 'minutes' or (not smallest and num >= 3600):
+        return s[:-3]
+    elif smallest == 'hours':
+        return s[:-6] + ' hours'
+    else:
+        return s
 
 
 def fmt_time(num, digits=2, pretty=True, smallest=None, fields=None, zeroes='skip', **kargs):
@@ -439,6 +483,9 @@ def fmt_time(num, digits=2, pretty=True, smallest=None, fields=None, zeroes='ski
             if fr == 0:
                 break
             continue
+        # In digits mode, output fields containing significant digits until seconds are reached, then stop
+        elif digits <= 0:
+            break
 
 
         # Avoids the "3 minutes, 2 nanoseconds" nonsense.
@@ -449,14 +496,12 @@ def fmt_time(num, digits=2, pretty=True, smallest=None, fields=None, zeroes='ski
                 digits -= 3
             continue
 
-        # In digits mode, output fields containing significant digits until seconds are reached, then stop
+
         if num >= 60:     # Minutes or higher
             u_num = int(u_num)
             out += [str(u_num) + ' ' + name + ('s' if u_num != 1 else '')]
             digits -= len(str(u_num))
             num -= u_num * unit
-            if digits <= 0:
-                break
         else:
             # If time is less than a minute, just output last field and quit
             d = digits if digits >= 1 else 1
@@ -464,76 +509,6 @@ def fmt_time(num, digits=2, pretty=True, smallest=None, fields=None, zeroes='ski
             break
 
     return ', '.join(out)
-
-
-def is_num(num):
-    "Is the string a number?"
-    if str(num).strip().replace('.', '', 1).replace('e', '', 1).isdigit():
-        return True
-    return False
-
-
-class ConvertDataSize():
-    '''
-    Convert data size. Given a user input size like
-    "80%+10G -1M" = 80% of the blocksize + 10 gigabytes - 1 Megabyte
-    '''
-
-    def __init__(self, blocksize=1e9, binary_prefix=1000, rounding=0):
-        self.blocksize = blocksize                  # Device blocksize for multiplying by a percentage
-        self.binary_prefix = binary_prefix          # 1000 or 1024 byte kilobytes
-        self.rounding = rounding                    # Round to sector sizes
-
-    def _process(self, arg):
-        arg = arg.strip().upper().replace('B', '')
-        if not arg:
-            return 0
-
-        start = arg[0]
-        end = arg[-1]
-
-        if start == '-':
-            return self.blocksize - self._process(arg[1:])
-
-        if '+' in arg:
-            return sum(map(self._process, arg.split('+')))
-
-        if '-' in arg:
-            args = arg.split('-')
-            val = self._process(args.pop(0))
-            for a in args:
-                val -= self._process(a)
-                return val
-
-        if end in 'KMGTPEZY':
-            return self._process(arg[:-1]) * self.binary_prefix ** (' KMGTPEZY'.index(end))
-
-        if end == '%':
-            if arg.count('%') > 1:
-                raise ValueError("Extra % in arg:", arg)        # pylint: disable=W0715
-            arg = float(arg[:-1])
-            if not 0 <= arg <= 100:
-                print("Percentages must be between 0 and 100, not", str(arg) + '%')
-                return None
-            else:
-                return int(arg / 100 * self.blocksize)
-
-        if is_num(arg):
-            return float(arg)
-        else:
-            print("Could not understand arg:", arg)
-            return None
-
-    def __call__(self, arg):
-        "Pass string to convert"
-        val = self._process(arg)
-        if val is None:
-            return None
-        val = int(val)
-        if self.rounding:
-            return val // self.rounding * self.rounding
-        else:
-            return val
 
 
 TERM_WIDTH = max(get_terminal_size().columns, 20)
@@ -579,5 +554,5 @@ auto_cols = auto_columns    # pylint: disable=C0103
 Generated by https://github.com/SurpriseDog/Star-Wrangler
 a Python tool for picking only the required code from source files
 written by SurpriseDog at: https://github.com/SurpriseDog
-2022-08-30
+2022-09-26
 '''
