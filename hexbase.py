@@ -100,13 +100,23 @@ class HexBase:
                 out[key] = vars(val)
             json.dump([meta, out, self.pfiles], f)
             self.last_save = time.time()
+            f.flush()
+            os.fsync(f)
+
+
+        # Save backup of backup
+        src = os.path.splitext(self.index)
+        bak = src[0] + '.bak' + src[1]
+        src = self.index
+        if os.path.exists(bak):
+            os.remove(bak)
+        shutil.copy(src, bak)
 
 
     def clean(self,):
         "Clean database of extraneous files"
 
-        # List of file hashes that are supposed to be in the folders:
-        known_files = []
+        known_files = []            # List of file hashes that are supposed to be in the folders:
         for dic in self.pfiles.values():
             known_files.extend([entry.split('.')[0] for entry in dic.keys()])
 
