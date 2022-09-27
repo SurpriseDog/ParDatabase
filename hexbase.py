@@ -7,6 +7,21 @@ import shutil
 import hashlib
 
 
+def tprint(*args, **kargs):
+    '''
+    Terminal print: Erasable text in terminal
+    newline = True will leave the text on the line
+    '''
+
+    term_width = shutil.get_terminal_size()[0]      # 2.5 microseconds
+    text = ' '.join(map(str, args))
+    if len(text) > term_width:
+        text = text[:term_width-3] + '...'
+
+    # Filling out the end of the line with spaces ensures that if something else prints it will not be mangled
+    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='')
+
+
 def user_answer(text='Y/N ?'):
     "Ask the user yes/no questions"
     ans = None
@@ -207,17 +222,18 @@ class HexBase:
 
     def verify(self,):
         "Verify that the .par2 files are available and their hash is still valid"
-        count = 0
-        for record in self.pfiles.values():
+        verified = 0
+        records = self.pfiles.values()
+        for count, record in enumerate(records):
             # print(record, '\n\n')
             for filename, phash in record.items():
-                # print(filename, phash)
+                tprint("Verifying file:", count+1, 'of', len(records))
                 src = self.locate(filename)
                 if not os.path.exists(src):
                     print('WARNING: Could not find', src)
                 elif not phash == self.get_hash(src):
                     print('WARNING: incorrect hash', src)
                 else:
-                    count += 1
+                    verified += 1
         print()
-        print(count, 'parity files verified')
+        print(verified, 'parity files verified')

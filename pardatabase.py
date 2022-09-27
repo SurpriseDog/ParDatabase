@@ -10,7 +10,7 @@ import signal
 import hashlib
 import subprocess
 from time import perf_counter as tpc
-from hexbase import HexBase
+from hexbase import HexBase, tprint
 from sd.easy_args import easy_parse
 from sd.common import fmt_time, rfs, sig, ConvertDataSize
 
@@ -22,20 +22,6 @@ try:
 except ModuleNotFoundError:
     print("Install psutil with: pip3 install psutil")
     print("to automatically reduce the io impact of this program.\n\n")
-
-def tprint(*args, **kargs):
-    '''
-    Terminal print: Erasable text in terminal
-    newline = True will leave the text on the line
-    '''
-
-    term_width = shutil.get_terminal_size()[0]      # 2.5 microseconds
-    text = ' '.join(map(str, args))
-    if len(text) > term_width:
-        text = text[:term_width-3] + '...'
-
-    # Filling out the end of the line with spaces ensures that if something else prints it will not be mangled
-    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='')
 
 
 def qprint(*args, **kargs):
@@ -377,9 +363,18 @@ def gen_par2(new_pars, data2process):
 def verify(files, repair=False):
     "Verify and repair files in directory"
     file_errors = []
+    data_seen = 0
 
+    count = 0
+    start = tpc()
     for relpath, info in files.items():
-        tprint("Verifying file:", relpath)
+        count += 1
+
+        status = ' '.join(("File #", str(count), 'of', str(len(files))))
+        if data_seen:
+            status += ' ' + ' '.join(('processed', rfs(data_seen), 'at', rfs(data_seen / (tpc() - start))+'/s'))
+        tprint(status, ':', relpath)
+
         if not info.verify():
             print("\n\nError in file!", relpath)
             file_errors.append(relpath)
@@ -392,6 +387,8 @@ def verify(files, repair=False):
                     print("File fixed!\n\n")
         else:
             info.update()
+        data_seen += info.size
+
     return file_errors
 
 
@@ -458,12 +455,14 @@ def main():
 
     # Verify files in database
     if UARGS['verify']:
+        print('\nChecking .par2 files in database:')
         DATABASE.verify()
 
 
     # Look for files with errors
     file_errors = []                # List of files with errors in them
     if UARGS['verify'] or UARGS['repair']:
+        print('\nVerifying hashes of all files in directory:')
         file_errors = verify(files, repair=UARGS['repair'])
 
 
