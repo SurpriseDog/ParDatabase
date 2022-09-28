@@ -10,7 +10,8 @@ import signal
 import hashlib
 import subprocess
 from time import perf_counter as tpc
-from hexbase import HexBase, tprint
+from hexbase import HexBase
+from sd.file_progress import FileProgress, tprint
 from sd.easy_args import easy_parse
 from sd.common import fmt_time, rfs, sig, ConvertDataSize
 
@@ -308,72 +309,27 @@ def walk(dirname, exclude, minimum=1, maximum=0):
 
 def gen_par2(new_pars, data2process):
     "Rehash files and Generate new .par2 files"
-    start_time = tpc()
-    rt_start = start_time   # Realtime time start
-    rt_data = 0             # Realtime data start
-    rt_rate = 0             # Realtime data rate (over at least 4 seconds of data)
-
-    data_seen = 0           # Data processed
-    par_total = 0           # Size of parity generated
-    data_total = 0          # Data actually processed into .par2
-
     last_save = time.time() # Last time database was saved
-
-    def bps(num):
-        return rfs(num, digits=2) + '/s'
-
+    fp = FileProgress(len(new_pars), data2process)
     for count, info in enumerate(new_pars):
-        status = 'Processing #' + str(count + 1)
-        if data_total > 10e6:
-            status += ' with ' + sig(par_total / data_total * 100, 2)+'% parity'
-        if data_seen:
-            # rate = data_seen / (time.time() - start_time)
-            eta = (data2process - data_seen) / rate
-            if rt_rate:
-                status += ' at ' + bps(rt_rate)
-            status += ' averaging ' + bps(rate) + ' with ' + fmt_time(eta) + ' remaining:'
+        tprint("File", fp.progress(info.size)['default'], ':', rel_path(info.pathname))
+        info.generate(rehash=True)
 
+        # Save every hour
+        if not count % 10 and time.time() - last_save >= 3600:
+            DATABASE.save()
+            last_save = time.time()
 
-        data_seen += info.size
-        tprint(status, rel_path(info.pathname))
-
-        par_size = info.generate(rehash=True)
-        # rate = 200; time.sleep(1); tprint('erased'); time.sleep(1); continue
-        if par_size:
-            par_total += par_size
-            data_total += info.size
-
-
-        # Calculate real time rate
-        if tpc() - rt_start >= 4:
-            rt_rate = (data_seen - rt_data) / (tpc() - rt_start)
-            rt_start = tpc()
-            rt_data = data_seen
-
-            # Save every hour
-            if time.time() - last_save >= 3600:
-                DATABASE.save()
-                last_save = time.time()
-
-        rate = data_seen / (tpc() - start_time)
-
-    tprint("Done. Processed", len(new_pars), 'files in', fmt_time(tpc() - start_time))
-
+    tprint("Done. Processed", fp.done['msg'])
 
 def verify(files, repair=False):
     "Verify and repair files in directory"
     file_errors = []
     data_seen = 0
 
-    count = 0
-    start = tpc()
+    fp = FileProgress(len(files), sum(info.size for info in files.values()))
     for relpath, info in files.items():
-        count += 1
-
-        status = ' '.join(("File #", str(count), 'of', str(len(files))))
-        if data_seen:
-            status += ' ' + ' '.join(('processed', rfs(data_seen), 'at', rfs(data_seen / (tpc() - start))+'/s'))
-        tprint(status, ':', relpath)
+        tprint(fp.progress(filename=info.pathname)['default'])
 
         if not info.verify():
             print("\n\nError in file!", relpath)
@@ -387,8 +343,7 @@ def verify(files, repair=False):
                     print("File fixed!\n\n")
         else:
             info.update()
-        data_seen += info.size
-
+    tprint("Done. Hashed", fp.done()['msg'])
     return file_errors
 
 

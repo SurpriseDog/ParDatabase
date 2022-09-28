@@ -6,21 +6,7 @@ import json
 import shutil
 import hashlib
 
-
-def tprint(*args, **kargs):
-    '''
-    Terminal print: Erasable text in terminal
-    newline = True will leave the text on the line
-    '''
-
-    term_width = shutil.get_terminal_size()[0]      # 2.5 microseconds
-    text = ' '.join(map(str, args))
-    if len(text) > term_width:
-        text = text[:term_width-3] + '...'
-
-    # Filling out the end of the line with spaces ensures that if something else prints it will not be mangled
-    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='')
-
+from sd.file_progress import FileProgress, tprint
 
 def user_answer(text='Y/N ?'):
     "Ask the user yes/no questions"
@@ -224,16 +210,18 @@ class HexBase:
         "Verify that the .par2 files are available and their hash is still valid"
         verified = 0
         records = self.pfiles.values()
+        fp = FileProgress()
+        fp.scan([self.locate(filename) for filename, _ in records])
         for count, record in enumerate(records):
             # print(record, '\n\n')
             for filename, phash in record.items():
-                tprint("Verifying file:", count+1, 'of', len(records))
                 src = self.locate(filename)
+                tprint("Verifying File", fp.progress(filename=src)['default'])
                 if not os.path.exists(src):
                     print('WARNING: Could not find', src)
                 elif not phash == self.get_hash(src):
                     print('WARNING: incorrect hash', src)
                 else:
                     verified += 1
+        tprint("Done. Scanned", fp.done()['msg'])
         print()
-        print(verified, 'parity files verified')
