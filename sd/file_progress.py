@@ -42,9 +42,9 @@ class FileProgress:
     def done(self,):
         "Return a message about how long the scan took"
         elapsed = time.perf_counter() - self.start
-        return dict(count = self.count,
-                    elapsed = elapsed,
-                    msg = str(self.count) + " files in " + fmt_time(elapsed),
+        return dict(count=self.count,
+                    elapsed=elapsed,
+                    msg=str(self.count) + " files in " + fmt_time(elapsed),
                     )
 
 

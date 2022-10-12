@@ -8,7 +8,7 @@ Make sure par2 is installed with: `sudo apt install par2`
 
 Run: `pardatabase.py <Target Directory>`
 
-to generate a .par2_database folder in the target directory with all of the parity files needed. If any files are modified in the future, simply run it again to create new parity files for any modified files.
+to generate a .pardatabase folder in the target directory with all of the parity files needed. If any files are modified in the future, simply run it again to create new parity files for any modified files.
 
 Get more detailed help with: `pardatabase.py -h` including options to:
 

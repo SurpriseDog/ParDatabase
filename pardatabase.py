@@ -13,7 +13,7 @@ from time import perf_counter as tpc
 from hexbase import HexBase
 from sd.file_progress import FileProgress, tprint
 from sd.easy_args import easy_parse
-from sd.common import fmt_time, rfs, sig, ConvertDataSize
+from sd.common import fmt_time, rfs, ConvertDataSize
 
 
 # Run self with ionice if available
@@ -320,12 +320,12 @@ def gen_par2(new_pars, data2process):
             DATABASE.save()
             last_save = time.time()
 
-    tprint("Done. Processed", fp.done['msg'])
+    tprint("Done. Processed", fp.done()['msg'])
+
 
 def verify(files, repair=False):
     "Verify and repair files in directory"
     file_errors = []
-    data_seen = 0
 
     fp = FileProgress(len(files), sum(info.size for info in files.values()))
     for relpath, info in files.items():
@@ -431,8 +431,8 @@ def main():
 
     DATABASE.save()
     if file_errors:
-        return False
-    return True
+        sys.exit(7)
+    sys.exit(0)
 
 
 # Future ideas:
@@ -450,4 +450,4 @@ if __name__ == "__main__":
         print("Please install par2 to continue")
         sys.exit(1)
 
-    sys.exit(int(not main()))
+    main()

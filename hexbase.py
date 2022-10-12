@@ -24,7 +24,7 @@ class HexBase:
 
 
     def __init__(self, basedir='.'):
-        basedirname = '.par2_database'          # Where to put the database folder
+        basedirname = '.pardatabase'            # Where to put the database folder
         self.basedir = os.path.join(basedir, basedirname)
         self.tmpname = '.pardatabase_tmp_file'  # Temporary output name
 
@@ -134,7 +134,7 @@ class HexBase:
 
 
     def locate(self, name=''):
-        "Return absolute path of filename in .par2_database"
+        "Return absolute path of filename in .pardatabase"
         return os.path.join(self.basedir, 'par2', name)
 
 
@@ -195,6 +195,7 @@ class HexBase:
                 try:
                     data = f.read(chunk)
                 except IOError as err:
+                    print('\nIO Error in', path)
                     print(err)
                     return None
                 if data:
@@ -212,8 +213,7 @@ class HexBase:
         records = self.pfiles.values()
         fp = FileProgress()
         fp.scan([self.locate(filename) for filename, _ in records])
-        for count, record in enumerate(records):
-            # print(record, '\n\n')
+        for record in records:
             for filename, phash in record.items():
                 src = self.locate(filename)
                 tprint("Verifying File", fp.progress(filename=src)['default'])
