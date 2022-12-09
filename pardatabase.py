@@ -70,7 +70,7 @@ def parse_args():
     ''',
     "Clean database of extraneous files",
     ['options', '', str],
-    '''Options passed onto par2 program. Add quotes"
+    '''Options passed onto par2 program, use quotes:
     For example "-r5" will set the target recovery percentage at 5%
     More options can be found by typing: man par2''',
     ['sequential', '', bool],
@@ -212,7 +212,7 @@ class Info:
             return False
 
 
-    def generate(self, quiet=False, rehash=False):
+    def generate(self, quiet=False, rehash=False, sequential=False):
         "Generate par2 or find existing"
 
         if self.hash and self.hash in DATABASE.pfiles:
@@ -233,8 +233,12 @@ class Info:
                     os.remove(os.path.join(cwd, name))
 
             def check_hash():
+                "Check the hash, return True if par2 already exists."
                 if rehash or not self.hash:
                     self.hash = get_hash(self.fullpath())
+                if self.hash in DATABASE.pfiles:
+                    return True
+                return False
 
             def interrupt(*_):
                 print("\n\nCaught ctrl-c!")
@@ -246,27 +250,33 @@ class Info:
                 print("Done")
                 sys.exit(0)
 
+            def run_par2():
+                "Run par2 command"
+                remove_existing()
+                cmd = "par2 create -n1 -qq".split()
+                options = UARGS['options']
+                if options:
+                    cmd.extend(('-'+options).split())
+                cmd += ['-a', basename + '.par2', '--', os.path.basename(self.fullpath())]
+                return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
+
 
             signal.signal(signal.SIGINT, interrupt)
-            remove_existing()
-
-
-            # Run par2 command
-            cmd = "par2 create -n1 -qq".split()
-            options = UARGS['options']
-            if options:
-                cmd.extend(('-'+options).split())
-            cmd += ['-a', basename + '.par2', '--', os.path.basename(self.fullpath())]
-            ret = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
 
 
             # Finish before get_hash in sequential mode or run in parallel
-            if UARGS['sequential']:
-                code = ret.wait()
-                check_hash()
+            if sequential:
+                if check_hash():
+                    return 0
+                code = run_par2().wait()
             else:
-                check_hash()
-                code = ret.wait()
+                ret = run_par2()
+                if check_hash():
+                    ret.terminate()
+                    remove_existing()
+                    return 0
+                else:
+                    code = ret.wait()
             signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
 
             # File read error or par2 error
@@ -312,13 +322,23 @@ def walk(dirname, exclude, minimum=1, maximum=0):
 
 
 
-def gen_par2(new_pars, data2process):
+def gen_pars(new_pars, data2process, sequential=True):
     "Rehash files and Generate new .par2 files"
     last_save = time.time() # Last time database was saved
     fp = FileProgress(len(new_pars), data2process)
     for count, info in enumerate(new_pars):
-        tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
-        info.generate(rehash=True)
+
+        # Use sequential mode if asked or just for small files
+        if sequential:
+            seq = True
+        elif info.size < 1e6:
+            seq = True
+        else:
+            seq = False
+
+        # + = multi - = sequential
+        tprint('+-'[seq], "File", fp.progress(info.size)['default'], ':', info.pathname)
+        info.generate(rehash=True, sequential=seq)
 
         # Save every hour
         if not count % 10 and time.time() - last_save >= 3600:
@@ -367,8 +387,6 @@ def database_upgrade():
             relpath = rel_path(pathname)
             info.pathname = relpath
             # print(vars(info))
-
-        exit()
         DATABASE.version = 1.1
 
 
@@ -415,7 +433,15 @@ def main():
     # Rehash and generate .par2 files for files found earlier
     if new_pars:
         print("\nCreating parity for", len(new_pars), 'files spanning', rfs(data2process))
-        gen_par2(new_pars, data2process)
+        if UARGS['sequential']:
+            seq = True
+        # Default to seqential mode if not a lot has changed:
+        elif len(new_pars) / len(visited) < 0.1:
+            seq = True
+        else:
+            seq = False
+        gen_pars(new_pars, data2process, sequential=seq)
+
 
 
     # Check for files deleted from database
