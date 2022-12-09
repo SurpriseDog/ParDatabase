@@ -57,6 +57,7 @@ def parse_args():
     ['hash', '', str, 'sha512'],
     "Hash function to use",
     ['clean', '', bool],
+    "Delete old unused .par2 files from the database.",
     ['min', '', str],
     '''
     Minimum file size to check
@@ -162,36 +163,40 @@ class Info:
             for key, val in load.items():
                 setattr(self, key, val)
         else:
-            self.pathname = pathname        # absolute path (can be changed between runs)
+            self.pathname = pathname        # Relative path (can be changed between runs)
             self.hash = None
             self.mtime = None
             self.size = None
             self.update()
 
 
+    def fullpath(self,):
+        "Return full path of self.pathname"
+        return os.path.join(UARGS['target'], self.pathname)
+
     def verify(self,):
         "Verify file is correct or generate new one"
-        return bool(self.hash == get_hash(self.pathname))
+        return bool(self.hash == get_hash(self.fullpath()))
 
 
     def update(self,):
         "Update file size and mtime"
-        self.mtime = os.path.getmtime(self.pathname)
-        self.size = os.path.getsize(self.pathname)
+        self.mtime = os.path.getmtime(self.fullpath())
+        self.size = os.path.getsize(self.fullpath())
 
 
     def rehash(self,):
         "Rehash the file"
-        self.hash = get_hash(self.pathname)
+        self.hash = get_hash(self.fullpath())
 
 
     def repair(self):
         "Attempt to repair a file with the files found in the database"
         if self.hash not in DATABASE.pfiles:
-            print("No par2 files found for:", rel_path(self.pathname))
+            print("No par2 files found for:", rel_path(self.fullpath()))
             return False
 
-        cwd = os.path.dirname(self.pathname)
+        cwd = os.path.dirname(self.fullpath())
         dest_files = DATABASE.get(self.hash, cwd)
         if dest_files:
             cmd = "par2 repair".split() + [sorted(dest_files)[0]]
@@ -212,12 +217,12 @@ class Info:
 
         if self.hash and self.hash in DATABASE.pfiles:
             if not quiet:
-                qprint("Found existing par2 for:", rel_path(self.pathname))
+                qprint("Found existing par2 for:", self.pathname)
             return 0
         else:
 
 
-            cwd = os.path.dirname(self.pathname)
+            cwd = os.path.dirname(self.fullpath())
             basename = '.pardatabase_tmp_file'
             ret = None
 
@@ -229,7 +234,7 @@ class Info:
 
             def check_hash():
                 if rehash or not self.hash:
-                    self.hash = get_hash(self.pathname)
+                    self.hash = get_hash(self.fullpath())
 
             def interrupt(*_):
                 print("\n\nCaught ctrl-c!")
@@ -251,7 +256,7 @@ class Info:
             options = UARGS['options']
             if options:
                 cmd.extend(('-'+options).split())
-            cmd += ['-a', basename + '.par2', '--', os.path.basename(self.pathname)]
+            cmd += ['-a', basename + '.par2', '--', os.path.basename(self.fullpath())]
             ret = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
 
 
@@ -312,7 +317,7 @@ def gen_par2(new_pars, data2process):
     last_save = time.time() # Last time database was saved
     fp = FileProgress(len(new_pars), data2process)
     for count, info in enumerate(new_pars):
-        tprint("File", fp.progress(info.size)['default'], ':', rel_path(info.pathname))
+        tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
         info.generate(rehash=True)
 
         # Save every hour
@@ -329,7 +334,7 @@ def verify(files, repair=False):
 
     fp = FileProgress(len(files), sum(info.size for info in files.values()))
     for relpath, info in files.items():
-        tprint(fp.progress(filename=info.pathname)['default'])
+        tprint(fp.progress(filename=info.fullpath())['default'])
 
         if not info.verify():
             print("\n\nError in file!", relpath)
@@ -351,6 +356,21 @@ def rel_path(pathname):
     "Return path of files relative to target directory"
     return os.path.relpath(pathname, UARGS['target'])
 
+def database_upgrade():
+    "Fix databases made with version 1.0"
+
+    if DATABASE.version < 1.1:
+        files = DATABASE.data
+        print("Upgrading old database 1.0 -> 1.1")
+        for info in files.values():
+            pathname = info.pathname
+            relpath = rel_path(pathname)
+            info.pathname = relpath
+            # print(vars(info))
+
+        exit()
+        DATABASE.version = 1.1
+
 
 def main():
 
@@ -363,7 +383,6 @@ def main():
 
     for pathname, info in files.items():
         files[pathname] = Info(load=info)
-
 
     visited = []                    # File names visited
     start_time = tpc()
@@ -381,12 +400,12 @@ def main():
         mtime = stat.st_mtime
         if relpath in files:
             info = files[relpath]
-            info.pathname = pathname
+            info.pathname = relpath
             if mtime > info.mtime or not info.hash:
                 new_pars.append(info)
                 data2process += info.size
         else:
-            info = Info(pathname)
+            info = Info(relpath)
             new_pars.append(info)
             data2process += info.size
         files[relpath] = info

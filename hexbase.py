@@ -33,6 +33,7 @@ class HexBase:
         self.pfiles = dict()                    # hashes to dict(par file name : hash of par file)
         self.data = dict()                      # Anything that can be serialized into json
         self.last_save = 0                      # Last save time
+        self.version = 1.1                      # Database version number
 
         self.hashfunc = hashlib.sha512
         self.hashname = None                    # Custom user hash
@@ -61,6 +62,7 @@ class HexBase:
                 meta, self.data, self.pfiles = json.load(f)
                 if meta['hash']:
                     self.hashname = meta['hash']
+                self.version = meta['version']
                 self.last_save = meta['mtime']
 
         else:
@@ -92,7 +94,7 @@ class HexBase:
                         hash=self.hashname,     # hash choice
                         encoding='hex',         # encode hash as hexadecimal
                         truncate=False,         # truncate hash to this many bits
-                        version=1.0,            # Database version
+                        version=self.version,   # Database version
                        )
 
 
@@ -225,3 +227,7 @@ class HexBase:
                     verified += 1
         tprint("Done. Scanned", fp.done()['msg'])
         print()
+
+
+# Version History
+# 1.1 Store relative pathname for files instead now. Requires fix for old pathnames
