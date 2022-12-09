@@ -116,10 +116,12 @@ class HexBase:
         shutil.copy(src, bak)
 
 
+    '''
     def clean(self,):
         "Clean database of extraneous files"
 
         known_files = []            # List of file hashes that are supposed to be in the folders:
+        print(self.pfiles)
         for dic in self.pfiles.values():
             known_files.extend([entry.split('.')[0] for entry in dic.keys()])
 
@@ -133,6 +135,26 @@ class HexBase:
                         print("Removing extraneous file:", path)
                         if user_answer():
                             os.remove(path)
+    '''
+
+    def clean(self, fhash):
+        "Look up hash in the database and remove any .par2 files if unused"
+        if fhash not in self.pfiles:
+            return 0
+
+        deleted = []
+        for name, phash in self.pfiles[fhash].items():
+            src = self.locate(name)
+            if os.path.exists(src):
+                print('Deleting', src)
+                os.remove(src)
+            else:
+                print('Missing .par2 file, cannot delete!', fhash)
+            deleted.append(fhash)
+        for fhash in set(deleted):
+            del self.pfiles[fhash]
+        return len(deleted)
+
 
 
     def locate(self, name=''):

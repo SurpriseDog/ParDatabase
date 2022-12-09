@@ -12,10 +12,27 @@ Run: `pardatabase.py <Target Directory>`
 
 to generate a .pardatabase folder in the target directory with all of the parity files needed. If any files are modified in the future, simply run it again to create new parity files for any modified files.
 
-Get more detailed help with: `pardatabase.py -h` including options to:
+Get more detailed help with: `pardatabase.py -h`
+  
 
-  * `--repair`           Verify and repair existing files.
+
+## Verification
+
   * `--verify `          Verify existing files by comparing the hash.
+
+By default, pardatabase will only scan your directory for modified files. To recalculate the hash of all existing files, please run with the `--verify` option.
+
+## Repair
+
+* `--repair`           Verify and repair existing files.
+
+Running verify will only check the hash of existing files. To repair files at the same time, use the `--repair` option. Don’t worry, it won’t modify existing bad files, only create new ones after attempting to repair them with their parity file.
+
+## Cleanup
+
+  * `--clean`            Delete old unused .par2 files from the database.
+
+par2 files will stay in the database until removed with the `--clean` option. Run `pardatabase.py --clean` occasionally to search for and remove these orphaned par2 files. Because pardatabase references files by their hash, 2 or more named files could be identical and sharing the same .par2 files, so the cleaner can only run after a full scan.
 
 
 ## Testing

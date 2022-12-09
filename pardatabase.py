@@ -213,7 +213,7 @@ class Info:
 
 
     def generate(self, quiet=False, rehash=False, sequential=False):
-        "Generate par2 or find existing"
+        "Generate par2 or find existing, return True on new files"
 
         if self.hash and self.hash in DATABASE.pfiles:
             if not quiet:
@@ -267,14 +267,14 @@ class Info:
             # Finish before get_hash in sequential mode or run in parallel
             if sequential:
                 if check_hash():
-                    return 0
+                    return False
                 code = run_par2().wait()
             else:
                 ret = run_par2()
                 if check_hash():
                     ret.terminate()
                     remove_existing()
-                    return 0
+                    return False
                 else:
                     code = ret.wait()
             signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
@@ -283,7 +283,7 @@ class Info:
             if code:
                 print("par2 returned code:", code)
             if not self.hash or code:
-                return 0
+                return False
 
             # Move files into database:
             total_size = 0                          # Running count of total .par2 size
@@ -291,7 +291,8 @@ class Info:
                 src = os.path.join(cwd, name)
                 total_size += os.path.getsize(src)
                 DATABASE.put(src, self.hash, name=name.replace(basename, ''))
-            return total_size
+                # todo remove total_size
+            return True
 
 
 
@@ -326,19 +327,17 @@ def gen_pars(new_pars, data2process, sequential=True):
     "Rehash files and Generate new .par2 files"
     last_save = time.time() # Last time database was saved
     fp = FileProgress(len(new_pars), data2process)
+    results = []
     for count, info in enumerate(new_pars):
 
-        # Use sequential mode if asked or just for small files
-        if sequential:
-            seq = True
-        elif info.size < 1e6:
-            seq = True
-        else:
-            seq = False
+        # + = multi - = sequential     '+-'[sequential],
+        tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
+        results.append(info.generate(rehash=True, sequential=sequential))
 
-        # + = multi - = sequential
-        tprint('+-'[seq], "File", fp.progress(info.size)['default'], ':', info.pathname)
-        info.generate(rehash=True, sequential=seq)
+        if not sequential and len(results) >= 5 and not any(results[-5:]):
+            sequential = True
+            print("Too many files with existing .par2... switch to sequential mode.")
+
 
         # Save every hour
         if not count % 10 and time.time() - last_save >= 3600:
@@ -354,7 +353,10 @@ def verify(files, repair=False):
 
     fp = FileProgress(len(files), sum(info.size for info in files.values()))
     for relpath, info in files.items():
-        tprint(fp.progress(filename=info.fullpath())['default'])
+        fullpath = info.fullpath()
+        if not os.path.exists(fullpath):
+            continue
+        tprint(fp.progress(filename=fullpath)['default'])
 
         if not info.verify():
             print("\n\nError in file!", relpath)
@@ -388,6 +390,29 @@ def database_upgrade():
             info.pathname = relpath
             # print(vars(info))
         DATABASE.version = 1.1
+
+
+def cleaner(files, visited):
+    '''Clean database of non existant files, assumes that every file has actually been tried'''
+
+    # Build list of hashes to info (could be multiples)
+    hashes = dict()
+    for info in files.values():
+        hashes.setdefault(info.hash, []).append(info)
+
+    # Look for hashes in the database that no longer correspond to .par2 files and delete those par2
+    deleted = 0
+    for pathname in list(files.keys()):
+        fullpath = os.path.join(UARGS['target'], pathname)
+        if pathname not in visited and not os.path.exists(fullpath):
+            info = files[pathname]
+            hashes[info.hash].remove(info)
+            print('\nRemoving reference for', pathname)
+            if not hashes[info.hash]:
+                deleted += DATABASE.clean(info.hash)
+            del files[pathname]
+    if deleted:
+        print(deleted, 'files removed from database')
 
 
 def main():
@@ -427,30 +452,24 @@ def main():
             new_pars.append(info)
             data2process += info.size
         files[relpath] = info
+        # print(relpath, vars(info))
     print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
 
 
     # Rehash and generate .par2 files for files found earlier
     if new_pars:
         print("\nCreating parity for", len(new_pars), 'files spanning', rfs(data2process))
-        if UARGS['sequential']:
-            seq = True
-        # Default to seqential mode if not a lot has changed:
-        elif len(new_pars) / len(visited) < 0.1:
-            seq = True
-        else:
-            seq = False
-        gen_pars(new_pars, data2process, sequential=seq)
-
+        gen_pars(new_pars, data2process, sequential=UARGS['sequential'])
 
 
     # Check for files deleted from database
     if UARGS['clean']:
-        DATABASE.clean()
-        for pathname in list(files.keys()):
-            if pathname not in visited:
-                qprint("Filename not found in folder:", pathname)
-                del files[pathname]
+        if UARGS['min'] or UARGS['max']:
+            print("\n\nCan't clean database in restricted mode.")
+            print("Please run pardatabase.py --clean without additional arguments")
+        else:
+            print("\n\nRunning database cleaner...")
+            cleaner(files, visited)
 
 
     # Verify files in database
