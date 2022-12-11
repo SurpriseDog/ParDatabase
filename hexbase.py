@@ -143,7 +143,7 @@ class HexBase:
             return 0
 
         deleted = []
-        for name, phash in self.pfiles[fhash].items():
+        for name in self.pfiles[fhash].keys():
             src = self.locate(name)
             if os.path.exists(src):
                 print('Deleting', src)
@@ -151,7 +151,7 @@ class HexBase:
             else:
                 print('Missing .par2 file, cannot delete!', fhash)
             deleted.append(fhash)
-        for fhash in set(deleted):
+        if fhash in deleted:
             del self.pfiles[fhash]
         return len(deleted)
 
@@ -221,7 +221,7 @@ class HexBase:
                 except IOError as err:
                     print('\nIO Error in', path)
                     print(err)
-                    return None
+                    return 'ioerror'
                 if data:
                     m.update(data)
                 else:

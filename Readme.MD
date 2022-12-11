@@ -32,7 +32,7 @@ Running verify will only check the hash of existing files. To repair files at th
 
   * `--clean`            Delete old unused .par2 files from the database.
 
-par2 files will stay in the database until removed with the `--clean` option. Run `pardatabase.py --clean` occasionally to search for and remove these orphaned par2 files. Because pardatabase references files by their hash, 2 or more named files could be identical and sharing the same .par2 files, so the cleaner can only run after a full scan.
+par2 files will stay in the database until removed with the `--clean` option. Run `pardatabase.py --clean` occasionally to search for and remove these orphaned par2 files. Because pardatabase references files by their hash, 2 or more named files could be identical and sharing the same .par2 files which means that the cleaner will only delete par2 files after all references to them have disappeared from the file-system.
 
 
 ## Testing

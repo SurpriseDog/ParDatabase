@@ -58,16 +58,29 @@ def parse_args():
     "Hash function to use",
     ['clean', '', bool],
     "Delete old unused .par2 files from the database.",
+
     ['min', '', str],
     '''
-    Minimum file size to check
+    Minimum file size to produce par2 files
     Example: --min 4k
     ''',
     ['max', '', str],
     '''
-    Maximum file size to check
+    Maximum file size to produce par2 files
     Example: --max 1G
     ''',
+
+    ['minscan', '', str],
+    '''
+    Minimum file size to scan
+    Example: --min 4k
+    ''',
+    ['maxscan', '', str],
+    '''
+    Maximum file size to scan
+    Example: --max 1G
+    ''',
+
     "Clean database of extraneous files",
     ['options', '', str],
     '''Options passed onto par2 program, use quotes:
@@ -124,7 +137,7 @@ def parse_args():
 
 
     # Convert user data sizes
-    for arg in 'min max'.split():
+    for arg in 'min max minscan maxscan'.split():
         if args[arg]:
             args[arg] = ConvertDataSize()(args[arg])
 
@@ -322,31 +335,6 @@ def walk(dirname, exclude, minimum=1, maximum=0):
             yield stat, pathname
 
 
-
-def gen_pars(new_pars, data2process, sequential=True):
-    "Rehash files and Generate new .par2 files"
-    last_save = time.time() # Last time database was saved
-    fp = FileProgress(len(new_pars), data2process)
-    results = []
-    for count, info in enumerate(new_pars):
-
-        # + = multi - = sequential     '+-'[sequential],
-        tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
-        results.append(info.generate(rehash=True, sequential=sequential))
-
-        if not sequential and len(results) >= 5 and not any(results[-5:]):
-            sequential = True
-            print("Too many files with existing .par2... switch to sequential mode.")
-
-
-        # Save every hour
-        if not count % 10 and time.time() - last_save >= 3600:
-            DATABASE.save()
-            last_save = time.time()
-
-    tprint("Done. Processed", fp.done()['msg'])
-
-
 def verify(files, repair=False):
     "Verify and repair files in directory"
     file_errors = []
@@ -415,11 +403,10 @@ def cleaner(files, visited):
         print(deleted, 'files removed from database')
 
 
-def main():
-
-    # Load the database
+def load_database():
+    '''Load the database'''
     DATABASE.load()
-    files = DATABASE.data                       # relative filename to Info
+    files = DATABASE.data
     if files:
         print("Sucessfully loaded info on", len(files), 'files')
         print("Database was last saved", fmt_time(time.time() - DATABASE.last_save), 'ago.')
@@ -427,16 +414,77 @@ def main():
     for pathname, info in files.items():
         files[pathname] = Info(load=info)
 
+    return files
+
+
+
+class NewPars:
+    "New parity files to create"
+
+    def __init__(self, minimum, maximum):
+        self.new_pars = []                  # Files to calculate .par2
+        self.data2process = 0               # Data left to process into .par2
+        self.minimum = minimum or 1         # Minimum size to parity is at least 1 byte
+        self.maximum = maximum or None
+
+
+    def new(self, info):
+        "Do user arguments allow parity to be created for file?"
+        size = info.size
+        if self.minimum and size < self.minimum:
+            return False
+        if self.maximum and size > self.maximum:
+            return False
+
+        self.new_pars.append(info)
+        self.data2process += size
+        return True
+
+
+    def gen_pars(self, sequential=False):
+        "Rehash files and Generate new .par2 files"
+
+        if not self.new_pars:
+            return False
+
+        print("\nCreating parity for", len(self.new_pars), 'files spanning', rfs(self.data2process))
+
+
+        last_save = time.time() # Last time database was saved
+        fp = FileProgress(len(self.new_pars), self.data2process)
+        results = []
+        for count, info in enumerate(self.new_pars):
+
+            # + = multi - = sequential     '+-'[sequential],
+            tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
+            results.append(info.generate(rehash=True, sequential=sequential))
+
+            if not sequential and len(results) >= 5 and not any(results[-5:]):
+                sequential = True
+                print("Too many files with existing .par2... switch to sequential mode.")
+
+
+            # Save every hour
+            if not count % 10 and time.time() - last_save >= 3600:
+                DATABASE.save()
+                last_save = time.time()
+
+        tprint("Done. Processed", fp.done()['msg'])
+        return True
+
+
+def main():
+
+    files = load_database()         # relative filename to Info
     visited = []                    # File names visited
     start_time = tpc()
-    new_pars = []                   # Files to calculate .par2
-    data2process = 0                # Data left to process into .par2
+    newpars = NewPars(UARGS['min'], UARGS['max'])   # Files to parity
 
 
     # Walk through file tree looking for files that need to be processed
     print("\nScanning file tree:", UARGS['target'])
-    minimum = UARGS['min'] or 1
-    maximum = UARGS['max'] or 0
+    minimum = UARGS['minscan'] or 1
+    maximum = UARGS['maxscan'] or 0
     for stat, pathname in walk(UARGS['target'], exclude=DATABASE.basedir, minimum=minimum, maximum=maximum):
         relpath = rel_path(pathname)
         visited.append(relpath)
@@ -445,31 +493,27 @@ def main():
             info = files[relpath]
             info.pathname = relpath
             if mtime > info.mtime or not info.hash:
-                new_pars.append(info)
-                data2process += info.size
+                newpars.new(info)
         else:
             info = Info(relpath)
-            new_pars.append(info)
-            data2process += info.size
+            newpars.new(info)
         files[relpath] = info
         # print(relpath, vars(info))
     print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
 
 
-    # Rehash and generate .par2 files for files found earlier
-    if new_pars:
-        print("\nCreating parity for", len(new_pars), 'files spanning', rfs(data2process))
-        gen_pars(new_pars, data2process, sequential=UARGS['sequential'])
-
-
     # Check for files deleted from database
     if UARGS['clean']:
-        if UARGS['min'] or UARGS['max']:
+        if UARGS['minscan'] or UARGS['maxscan']:
+            # If a file changed name and wasn't scanned by walk it could get dereferenced.
             print("\n\nCan't clean database in restricted mode.")
             print("Please run pardatabase.py --clean without additional arguments")
         else:
             print("\n\nRunning database cleaner...")
             cleaner(files, visited)
+            DATABASE.save()
+    else:
+        newpars.gen_pars(sequential=UARGS['sequential'])
 
 
     # Verify files in database
@@ -485,10 +529,12 @@ def main():
         file_errors = verify(files, repair=UARGS['repair'])
 
 
-    # Look for files with missing hashes (caused by io errors while reading
+    # Look for files with ioerror hashes
     for filename, info in list(files.items()):
-        if not info.hash:
+        if info.hash == 'ioerror':
             file_errors.append(filename)
+            del files[filename]
+
     if file_errors:
         print("\n\nWARNING! THE FOLLOWING FILES HAD ERRORS:")
         print('\n'.join(file_errors))
