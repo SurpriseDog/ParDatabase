@@ -8,6 +8,10 @@ import hashlib
 
 from sd.file_progress import FileProgress, tprint
 
+BASEDIRNAME = '.pardatabase'                # Where to put the database folder
+
+
+
 def user_answer(text='Y/N ?'):
     "Ask the user yes/no questions"
     ans = None
@@ -24,12 +28,10 @@ class HexBase:
 
 
     def __init__(self, basedir='.'):
-        basedirname = '.pardatabase'            # Where to put the database folder
-        self.basedir = os.path.join(basedir, basedirname)
-        self.tmpname = '.pardatabase_tmp_file'  # Temporary output name
+        self.basedir = os.path.join(basedir, BASEDIRNAME)
 
         # Repository of filenames, hashes, modificaton times and more
-        self.index = os.path.join(basedir, basedirname, 'database.xz')
+        self.index = os.path.join(basedir, BASEDIRNAME, 'database.xz')
         self.pfiles = dict()                    # hashes to dict(par file name : hash of par file)
         self.data = dict()                      # Anything that can be serialized into json
         self.last_save = 0                      # Last save time
@@ -73,7 +75,7 @@ class HexBase:
             self.hashfunc = vars(hashlib)[self.hashname]
 
 
-    def save(self):
+    def save(self, data=None):
         "Save the database in lzma which adds a nice checksum"
         # Rotate the database and delete old versions
         if os.path.exists(self.index):
@@ -98,10 +100,7 @@ class HexBase:
                        )
 
 
-            out = dict()
-            for key, val in self.data.items():
-                out[key] = vars(val)
-            json.dump([meta, out, self.pfiles], f)
+            json.dump([meta, data, self.pfiles], f)
             self.last_save = time.time()
             f.flush()
             os.fsync(f)
@@ -115,27 +114,6 @@ class HexBase:
             os.remove(bak)
         shutil.copy(src, bak)
 
-
-    '''
-    def clean(self,):
-        "Clean database of extraneous files"
-
-        known_files = []            # List of file hashes that are supposed to be in the folders:
-        print(self.pfiles)
-        for dic in self.pfiles.values():
-            known_files.extend([entry.split('.')[0] for entry in dic.keys()])
-
-        # Clear out any files that are unknown (probably left over from last session)
-        for folder in os.listdir(self.locate()):
-            if folder in self.hexes:
-                for name in os.listdir(self.locate(folder)):
-                    name = os.path.join(folder, name)
-                    if name.endswith('.par2') and not name.split('.')[0] in known_files:
-                        path = self.locate(name)
-                        print("Removing extraneous file:", path)
-                        if user_answer():
-                            os.remove(path)
-    '''
 
     def clean(self, fhash):
         "Look up hash in the database and remove any .par2 files if unused"

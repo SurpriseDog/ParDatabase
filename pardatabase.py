@@ -80,7 +80,8 @@ def parse_args():
     Maximum file size to scan
     Example: --max 1G
     ''',
-
+    ['singlecharfix', '', bool],
+    "Temporarily rename files to fix a bug in par2.",
     "Clean database of extraneous files",
     ['options', '', str],
     '''Options passed onto par2 program, use quotes:
@@ -92,8 +93,8 @@ def parse_args():
     "Wait for (delay * read_time) after every read to keep drive running cooler.",
     ['verify', '', bool],
     "Verify existing files by comparing the hash",
-    ['repair', '', bool],
-    "Verify and repair existing files",
+    ['repair', '', str],
+    "Repair an existing file",
     ]
 
     args = easy_parse(args,
@@ -159,18 +160,12 @@ def get_hash(path):
 
 
 
-
-def find_tmp(cwd, basename=''):
-    "Find existing par2 tmp files"
-    for name in os.listdir(cwd):
-        if name.endswith('.par2') and name.startswith(basename):
-            yield name
-
-
 class Info:
     "Info on filepaths within system"
 
     def __init__(self, pathname=None, load=None):
+        self.tmpname = '.pardatabase_tmp_file'          # Temporary file used when generating .par2
+
         if load:
             # Load from json dict
             for key, val in load.items():
@@ -181,6 +176,13 @@ class Info:
             self.mtime = None
             self.size = None
             self.update()
+
+    def tojson(self,):
+        "Return neccesary variables as compact json dict."
+        out = dict(vars(self,))
+        out.pop('tmpname')
+        return out
+
 
 
     def fullpath(self,):
@@ -212,7 +214,7 @@ class Info:
         cwd = os.path.dirname(self.fullpath())
         dest_files = DATABASE.get(self.hash, cwd)
         if dest_files:
-            cmd = "par2 repair".split() + [sorted(dest_files)[0]]
+            cmd = "par2 repair".split() + [sorted(dest_files)[0]] + [self.fullpath()]
 
             print(' '.join(cmd))
             ret = subprocess.run(cmd, check=False, cwd=cwd)
@@ -224,88 +226,159 @@ class Info:
         else:
             return False
 
+    def find_tmp(self, cwd):
+        "Find existing par2 tmp files"
+        for name in os.listdir(cwd):
+            if name.endswith('.par2') and name.startswith(self.tmpname):
+                yield name
 
-    def generate(self, quiet=False, rehash=False, sequential=False):
-        "Generate par2 or find existing, return True on new files"
+    def remove_existing(self, cwd):
+        "Delete leftover .par2 files"
+        for name in self.find_tmp(cwd):
+            qprint("Removing existing par2 file:", rel_path(os.path.join(cwd, name)))
+            os.remove(os.path.join(cwd, name))
 
-        if self.hash and self.hash in DATABASE.pfiles:
-            if not quiet:
-                qprint("Found existing par2 for:", self.pathname)
-            return 0
+
+    def generate(self, sequential=False):
+        '''Generate par2 or find existing, return True on new files
+            quiet = Be less verbose
+            sequential = Hash the file first, before running par2 (instead of in parallel)
+        '''
+        cwd = os.path.dirname(self.fullpath())
+        ret = None
+        old_name = self.pathname                        # Original base filename
+        new_name = old_name                             # Modified name
+        if UARGS['singlecharfix'] and len(old_name) == 1:
+            new_name = os.path.join(os.path.dirname(os.path.basename(self.pathname)),
+                                    old_name + '.pardatabase.tmp.rename')
+
+
+        def interrupt(*_):
+            print("\n\nCaught ctrl-c!")
+            rename(new_name, old_name)
+            if ret:
+                ret.kill()
+            print("Saving database, please wait...")
+            save_database()
+            self.remove_existing(cwd)
+            print("Done")
+            sys.exit(0)
+
+        def run_par2():
+            "Run par2 command"
+            self.remove_existing(cwd)
+            cmd = "par2 create -n1 -qq".split()
+            options = UARGS['options']
+            if options:
+                cmd.extend(('-'+options).split())
+            cmd += ['-a', self.tmpname + '.par2', '--', new_name]
+            return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
+
+        def rename(old, new, verbose=False):
+            "Swap name old for new"
+            if old != new:
+                os.rename(old, new)
+                self.pathname = new
+                if verbose:
+                    print("File name restored:", new)
+
+        # Finish before get_hash in sequential mode or run in parallel
+        signal.signal(signal.SIGINT, interrupt)     # Catch Ctrl-C
+        rename(old_name, new_name)                  # Fix 1 char filenames (if needed)
+        if sequential:
+            self.hash = get_hash(self.fullpath())
+            if self.hash in DATABASE.pfiles:
+                rename(new_name, old_name)
+                return False, []
+            code = run_par2().wait()
         else:
-
-
-            cwd = os.path.dirname(self.fullpath())
-            basename = '.pardatabase_tmp_file'
-            ret = None
-
-            def remove_existing():
-                "Delete leftover .par2 files"
-                for name in find_tmp(cwd):
-                    qprint("Removing existing par2 file:", rel_path(os.path.join(cwd, name)))
-                    os.remove(os.path.join(cwd, name))
-
-            def check_hash():
-                "Check the hash, return True if par2 already exists."
-                if rehash or not self.hash:
-                    self.hash = get_hash(self.fullpath())
-                if self.hash in DATABASE.pfiles:
-                    return True
-                return False
-
-            def interrupt(*_):
-                print("\n\nCaught ctrl-c!")
-                if ret:
-                    ret.kill()
-                print("Saving database, please wait...")
-                DATABASE.save()
-                remove_existing()
-                print("Done")
-                sys.exit(0)
-
-            def run_par2():
-                "Run par2 command"
-                remove_existing()
-                cmd = "par2 create -n1 -qq".split()
-                options = UARGS['options']
-                if options:
-                    cmd.extend(('-'+options).split())
-                cmd += ['-a', basename + '.par2', '--', os.path.basename(self.fullpath())]
-                return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=cwd)
-
-
-            signal.signal(signal.SIGINT, interrupt)
-
-
-            # Finish before get_hash in sequential mode or run in parallel
-            if sequential:
-                if check_hash():
-                    return False
-                code = run_par2().wait()
+            ret = run_par2()
+            self.hash = get_hash(self.fullpath())
+            if self.hash in DATABASE.pfiles:
+                ret.terminate()
+                self.remove_existing(cwd)
+                rename(new_name, old_name)
+                return 'PARALLEL_EARLY_QUIT', []
             else:
-                ret = run_par2()
-                if check_hash():
-                    ret.terminate()
-                    remove_existing()
-                    return False
-                else:
-                    code = ret.wait()
-            signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
+                code = ret.wait()
+        rename(new_name, old_name)                  # Swap name back
+        signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
 
-            # File read error or par2 error
-            if code:
-                print("par2 returned code:", code)
-            if not self.hash or code:
-                return False
+        # File read error or par2 error
+        if code:
+            print("par2 returned code:", code)
+        if not self.hash or code:
+            return False, []
 
-            # Move files into database:
-            total_size = 0                          # Running count of total .par2 size
-            for name in find_tmp(cwd, basename):
-                src = os.path.join(cwd, name)
-                total_size += os.path.getsize(src)
-                DATABASE.put(src, self.hash, name=name.replace(basename, ''))
-                # todo remove total_size
-            return True
+        return True, [os.path.join(cwd, name) for name in self.find_tmp(cwd)]
+
+
+class NewPars:
+    "New parity files to create"
+
+    def __init__(self, minimum, maximum):
+        self.new_pars = []                  # Files to calculate .par2
+        self.data2process = 0               # Data left to process into .par2
+        self.minimum = minimum or 1         # Minimum size to parity is at least 1 byte
+        self.maximum = maximum or None
+
+
+    def gen_pars(self, sequential=False):
+        "Rehash files and Generate new .par2 files"
+
+        if not self.new_pars:
+            return False
+
+        print("\nCreating parity for", len(self.new_pars), 'files spanning', rfs(self.data2process))
+
+
+        last_save = time.time() # Last time database was saved
+        fp = FileProgress(len(self.new_pars), self.data2process)
+        results = []
+        for count, info in enumerate(self.new_pars):
+
+            if info.hash and info.hash in DATABASE.pfiles:
+                qprint("Found existing par2 for:", info.pathname)
+                return 0
+
+            # + = multi - = sequential     '+-'[sequential],
+            tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
+
+            status, files = info.generate(sequential=sequential)
+            results.append(status)
+
+            for name in files:
+                # total_size += os.path.getsize(name)
+                DATABASE.put(name, info.hash, name=os.path.basename(name.replace(info.tmpname, '')))
+
+
+            if not sequential and results[-5:] == ['PARALLEL_EARLY_QUIT'] * 5:
+                print("Too many files with existing .par2... switch to sequential mode.")
+                sequential = True
+
+
+            # Save every hour
+            if not count % 10 and time.time() - last_save >= 3600:
+                save_database()
+                last_save = time.time()
+
+            if len(results) > 5:
+                results.pop(0)
+
+        tprint("Done. Processed", fp.done()['msg'])
+        return True
+
+    def new(self, info):
+        "Do user arguments allow parity to be created for file?"
+        size = info.size
+        if self.minimum and size < self.minimum:
+            return False
+        if self.maximum and size > self.maximum:
+            return False
+
+        self.new_pars.append(info)
+        self.data2process += size
+        return True
 
 
 
@@ -335,8 +408,30 @@ def walk(dirname, exclude, minimum=1, maximum=0):
             yield stat, pathname
 
 
-def verify(files, repair=False):
-    "Verify and repair files in directory"
+
+def repair(files, name):
+    "Given a filename, attempt a repair"
+
+    if not os.path.exists(name):
+        print("Error, Can't find filename:", name)
+        return False
+
+    if name not in files:
+        print("Error, No record of filename in database.")
+        return False
+
+    info = files[name]
+    print("Attempting repair...")
+    if info.repair():
+        info.rehash()
+        info.update()
+        print("File fixed!\n\n")
+        return True
+    return False
+
+
+def verify(files):
+    "Verify files in directory"
     file_errors = []
 
     fp = FileProgress(len(files), sum(info.size for info in files.values()))
@@ -349,13 +444,6 @@ def verify(files, repair=False):
         if not info.verify():
             print("\n\nError in file!", relpath)
             file_errors.append(relpath)
-            if repair:
-                print("Attempting repair...")
-                if info.repair():
-                    info.rehash()
-                    info.update()
-                    file_errors.pop(-1)
-                    print("File fixed!\n\n")
         else:
             info.update()
     tprint("Done. Hashed", fp.done()['msg'])
@@ -366,18 +454,6 @@ def rel_path(pathname):
     "Return path of files relative to target directory"
     return os.path.relpath(pathname, UARGS['target'])
 
-def database_upgrade():
-    "Fix databases made with version 1.0"
-
-    if DATABASE.version < 1.1:
-        files = DATABASE.data
-        print("Upgrading old database 1.0 -> 1.1")
-        for info in files.values():
-            pathname = info.pathname
-            relpath = rel_path(pathname)
-            info.pathname = relpath
-            # print(vars(info))
-        DATABASE.version = 1.1
 
 
 def cleaner(files, visited):
@@ -403,6 +479,13 @@ def cleaner(files, visited):
         print(deleted, 'files removed from database')
 
 
+def save_database():
+    out = dict()
+    for key, val in DATABASE.data.items():
+        out[key] = val.tojson()
+    DATABASE.save(out)
+
+
 def load_database():
     '''Load the database'''
     DATABASE.load()
@@ -416,61 +499,18 @@ def load_database():
 
     return files
 
+def database_upgrade():
+    "Fix databases made with version 1.0"
 
-
-class NewPars:
-    "New parity files to create"
-
-    def __init__(self, minimum, maximum):
-        self.new_pars = []                  # Files to calculate .par2
-        self.data2process = 0               # Data left to process into .par2
-        self.minimum = minimum or 1         # Minimum size to parity is at least 1 byte
-        self.maximum = maximum or None
-
-
-    def new(self, info):
-        "Do user arguments allow parity to be created for file?"
-        size = info.size
-        if self.minimum and size < self.minimum:
-            return False
-        if self.maximum and size > self.maximum:
-            return False
-
-        self.new_pars.append(info)
-        self.data2process += size
-        return True
-
-
-    def gen_pars(self, sequential=False):
-        "Rehash files and Generate new .par2 files"
-
-        if not self.new_pars:
-            return False
-
-        print("\nCreating parity for", len(self.new_pars), 'files spanning', rfs(self.data2process))
-
-
-        last_save = time.time() # Last time database was saved
-        fp = FileProgress(len(self.new_pars), self.data2process)
-        results = []
-        for count, info in enumerate(self.new_pars):
-
-            # + = multi - = sequential     '+-'[sequential],
-            tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
-            results.append(info.generate(rehash=True, sequential=sequential))
-
-            if not sequential and len(results) >= 5 and not any(results[-5:]):
-                sequential = True
-                print("Too many files with existing .par2... switch to sequential mode.")
-
-
-            # Save every hour
-            if not count % 10 and time.time() - last_save >= 3600:
-                DATABASE.save()
-                last_save = time.time()
-
-        tprint("Done. Processed", fp.done()['msg'])
-        return True
+    if DATABASE.version < 1.1:
+        files = DATABASE.data
+        print("Upgrading old database 1.0 -> 1.1")
+        for info in files.values():
+            pathname = info.pathname
+            relpath = rel_path(pathname)
+            info.pathname = relpath
+            # print(vars(info))
+        DATABASE.version = 1.1
 
 
 def main():
@@ -479,6 +519,12 @@ def main():
     visited = []                    # File names visited
     start_time = tpc()
     newpars = NewPars(UARGS['min'], UARGS['max'])   # Files to parity
+
+
+    # Repair single file and quit, if requested
+    if UARGS['repair']:
+        return repair(files, UARGS['repair'])
+
 
 
     # Walk through file tree looking for files that need to be processed
@@ -511,7 +557,7 @@ def main():
         else:
             print("\n\nRunning database cleaner...")
             cleaner(files, visited)
-            DATABASE.save()
+            save_database()
     else:
         newpars.gen_pars(sequential=UARGS['sequential'])
 
@@ -524,9 +570,9 @@ def main():
 
     # Look for files with errors
     file_errors = []                # List of files with errors in them
-    if UARGS['verify'] or UARGS['repair']:
+    if UARGS['verify']:
         print('\nVerifying hashes of all files in directory:')
-        file_errors = verify(files, repair=UARGS['repair'])
+        file_errors = verify(files)
 
 
     # Look for files with ioerror hashes
@@ -539,7 +585,7 @@ def main():
         print("\n\nWARNING! THE FOLLOWING FILES HAD ERRORS:")
         print('\n'.join(file_errors))
 
-    DATABASE.save()
+    save_database()
     if file_errors:
         sys.exit(7)
     sys.exit(0)
