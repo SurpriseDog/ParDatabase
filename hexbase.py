@@ -8,8 +8,6 @@ import hashlib
 
 from sd.file_progress import FileProgress, tprint
 
-BASEDIRNAME = '.pardatabase'                # Where to put the database folder
-
 
 
 def user_answer(text='Y/N ?'):
@@ -27,11 +25,11 @@ class HexBase:
     "Store files with unique hashed file names in hex folder structure"
 
 
-    def __init__(self, basedir='.'):
-        self.basedir = os.path.join(basedir, BASEDIRNAME)
+    def __init__(self, basedir = '.pardatabase'):
+        self.basedir = basedir                  # Where to put the database folder
 
         # Repository of filenames, hashes, modificaton times and more
-        self.index = os.path.join(basedir, BASEDIRNAME, 'database.xz')
+        self.index = os.path.join(basedir, 'database.xz')
         self.pfiles = dict()                    # hashes to dict(par file name : hash of par file)
         self.data = dict()                      # Anything that can be serialized into json
         self.last_save = 0                      # Last save time
@@ -72,6 +70,7 @@ class HexBase:
                 self.hashname = hashname
 
         if self.hashname:
+            print(self.hashname)
             self.hashfunc = vars(hashlib)[self.hashname]
 
 
@@ -140,12 +139,10 @@ class HexBase:
         return os.path.join(self.basedir, 'par2', name)
 
 
-    def put(self, src, fhash, name=''):
-        "Given a hash move the file from the src location to the approriate folder and update self.files"
+    def put(self, src, fhash, ending):
+        "Given a hash move the file from the src location to the appropiate folder and update self.files"
         folder = fhash[:2].upper()
-        oname = fhash[2:32+2]
-        if name:
-            oname += name
+        oname = fhash[2:32+2] + ending
         oname = os.path.join(folder, oname)
 
         dest = self.locate(oname)
