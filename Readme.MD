@@ -22,7 +22,7 @@ Get more detailed help with: `pardatabase.py -h`
 | `--verify ` | Verify existing files by comparing the hash. |
 || By default, pardatabase will only scan your directory for modified files. To recalculate the hash of all existing files, please run with the `--verify` option.|
 | | |
-| `--repair` | Verify and repair existing files. |
+| `--repair <filename>` | Verify and repair existing files. |
 | | Running verify will only check the hash of existing files. To repair files at the same time, use the `--repair` option. Don’t worry, it won’t modify existing bad files, only create new ones after attempting to repair them with their parity file.|
 | | |
 | `--clean` | Delete old unused .par2 files from the database. |

@@ -25,7 +25,7 @@ class HexBase:
     "Store files with unique hashed file names in hex folder structure"
 
 
-    def __init__(self, basedir = '.pardatabase'):
+    def __init__(self, basedir='.pardatabase'):
         self.basedir = basedir                  # Where to put the database folder
 
         # Repository of filenames, hashes, modificaton times and more

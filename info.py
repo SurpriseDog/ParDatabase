@@ -29,7 +29,7 @@ class Info:
 
     def tojson(self,):
         "Return neccesary variables as compact json dict."
-        return {key:val for key,val in vars(self).items() if key in ['pathname', 'hash', 'mtime', 'size']}
+        return {key:val for key, val in vars(self).items() if key in ['pathname', 'hash', 'mtime', 'size']}
 
 
     def update(self,):

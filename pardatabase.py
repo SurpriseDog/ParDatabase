@@ -421,7 +421,7 @@ class Database:
         def rename(old, new, verbose=False):
             "Swap name old for new"
             if old != new:
-                os.rename(os.path.join(self.target, old), os.path.join(self.target,new))
+                os.rename(os.path.join(self.target, old), os.path.join(self.target, new))
                 info.pathname = new
                 if verbose:
                     print("File name restored:", new)
