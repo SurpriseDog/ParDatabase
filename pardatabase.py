@@ -297,9 +297,6 @@ class Database:
     def verify(self,):
         "Verify files in directory"
 
-        print('\nChecking .par2 files in database:')
-        self.hexbase.verify()
-
         # Look for files with errors
         file_errors = []                # List of files with errors in them
         print('\nVerifying hashes of all files referenced in database:')
@@ -326,6 +323,9 @@ class Database:
             print('\n')
             print(missing, 'files had no hash in the database.')
             print("Run pardatabase without the --verify to add them.")
+
+        print('\n\nChecking .par2 files in database:')
+        self.hexbase.verify()
 
         return file_errors
 
