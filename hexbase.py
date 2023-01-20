@@ -210,8 +210,13 @@ class HexBase:
         "Verify that the .par2 files are available and their hash is still valid"
         verified = 0
         records = self.pfiles.values()
+
         fp = FileProgress()
-        fp.scan([self.locate(filename) for filename, _ in records])
+        for record in records:
+            for filename in record.keys():
+                fp.scan_file(self.locate(filename))
+
+
         for record in records:
             for filename, phash in record.items():
                 src = self.locate(filename)
@@ -222,6 +227,7 @@ class HexBase:
                     print('WARNING: incorrect hash', src)
                 else:
                     verified += 1
+            time.sleep(1)
         tprint("Done. Scanned", fp.done()['msg'])
         print()
 

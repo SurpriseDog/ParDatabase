@@ -27,8 +27,10 @@ class FileProgress:
 
 
     def __init__(self, total=0, data_total=0):
+        "Use self.scan, if number of files and total size is unknown"
+
         self.count = 0
-        self.total = total
+        self.total = total              # Number of files
         self.start = 0
         self.data_seen = 0              # Data Processed
         self.data_total = data_total    # Total expected data size
@@ -49,10 +51,18 @@ class FileProgress:
 
 
     def scan(self, files, ):
-        "Scan a list of files"
+        "Scan a list of files, to get total file size."
         total = 0
         for file in files:
             total += os.path.getsize(file)
+        self.data_total = total
+        self.total = len(files)
+
+
+    def scan_file(self, file,):
+        "Scan a single file"
+        self.data_total += os.path.getsize(file)
+        self.total += 1
 
 
     def progress(self, size=0, filename=None):
