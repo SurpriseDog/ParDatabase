@@ -31,7 +31,7 @@ class FileProgress:
 
         self.count = 0
         self.total = total              # Number of files
-        self.start = 0
+        self.start = time.perf_counter()
         self.data_seen = 0              # Data Processed
         self.data_total = data_total    # Total expected data size
 

@@ -305,18 +305,27 @@ class Database:
         print('\nVerifying hashes of all files referenced in database:')
 
         fp = FileProgress(len(self.files), sum(info.size for info in self.files.values()))
+        missing = 0         # Files with missing hashes
         for relpath, info in self.files.items():
+            if not info.hash:
+                missing += 1
+                continue
+
             fullpath = info.fullpath
             if not os.path.exists(fullpath):
                 continue
+
             tprint(fp.progress(filename=fullpath)['default'])
 
-            if not info.hash == self.get_hash(info.fullpath):
+            if info.hash != self.get_hash(info.fullpath):
                 print("\n\nError in file!", relpath)
                 file_errors.append(relpath)
-            else:
-                info.update()
         tprint("Done. Hashed", fp.done()['msg'])
+
+        if missing:
+            print('\n')
+            print(missing, 'files had no hash in the database.')
+            print("Run pardatabase without the --verify to add them.")
 
         return file_errors
 

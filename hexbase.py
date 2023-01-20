@@ -227,7 +227,6 @@ class HexBase:
                     print('WARNING: incorrect hash', src)
                 else:
                     verified += 1
-            time.sleep(1)
         tprint("Done. Scanned", fp.done()['msg'])
         print()
 
