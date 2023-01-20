@@ -96,7 +96,7 @@ def parse_args():
     args = easy_parse(args,
                       positionals,
                       usage='<Target Directory>, options...',
-                      description='Create a database of .par2 files for a directory.')
+                      description='Create a database of .par2 files for a directory')
 
     args = vars(args)
 
@@ -195,7 +195,7 @@ class Database:
         self.hexbase.load()
         files = self.hexbase.data
         if files:
-            print("Database was last saved", fmt_time(time.time() - self.hexbase.last_save), 'ago.')
+            print("Database was last saved", fmt_time(time.time() - self.hexbase.last_save), 'ago')
             print("Sucessfully loaded info on", len(files), 'files')
         for pathname, info in files.items():
             files[pathname] = Info(load=info, base=self.target)
@@ -321,7 +321,7 @@ class Database:
 
         if missing:
             print('\n')
-            print(missing, 'files had no hash in the database.')
+            print(missing, 'files had no hash in the database')
             print("Run pardatabase without the --verify to add them.")
 
         print('\n\nChecking .par2 files in database:')
