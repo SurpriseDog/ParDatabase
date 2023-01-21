@@ -224,7 +224,7 @@ class Database:
             if relpath in self.files:
                 info = self.files[relpath]
                 info.pathname = relpath
-                if mtime > info.mtime or not info.hash:
+                if mtime > info.mtime or not info.hash or info.hash not in self.hexbase.pfiles:
                     self.new_par(info)
             else:
                 info = Info(relpath, base=self.target)
@@ -399,7 +399,7 @@ class Database:
             if len(results) > 5:
                 results.pop(0)
 
-        tprint("Done. Processed", fp.done()['msg'])
+        tprint("\nDone. Processed", fp.done()['msg'])
         return True
 
 
@@ -459,7 +459,9 @@ class Database:
 
         # File read error or par2 error
         if code:
-            print("par2 returned code:", code)
+            print("\npar2 returned code:", code)
+            if len(os.path.basename(old_name)) == 1 and not singlecharfix:
+                print("Run the program with --singlecharfix or update par2 to fix these errors")
         if not info.hash or code:
             return False, []
 
