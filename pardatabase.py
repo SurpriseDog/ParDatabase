@@ -312,7 +312,8 @@ class Database:
             if not os.path.exists(fullpath):
                 continue
 
-            tprint(fp.progress(filename=fullpath)['default'])
+            tprint(fp.progress(filename=fullpath)['default'] + ':', relpath)
+            time.sleep(1)
 
             if info.hash != self.get_hash(info.fullpath):
                 print("\n\nError in file!", relpath)
@@ -324,7 +325,7 @@ class Database:
             print(missing, 'files had no hash in the database')
             print("Run pardatabase without the --verify to add them.")
 
-        print('\n\nChecking .par2 files in database:')
+        print('\nChecking .par2 files in database:')
         self.hexbase.verify()
 
         return file_errors
@@ -376,7 +377,7 @@ class Database:
         results = []
         for count, info in enumerate(self.new_pars):
             # + = multi - = sequential     '+-'[sequential],
-            tprint("File", fp.progress(info.size)['default'], ':', info.pathname)
+            tprint("File", fp.progress(info.size)['default'] + ':', info.pathname)
 
             status, files = self.generate(info, sequential, singlecharfix, par2_options)
             results.append(status)

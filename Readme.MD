@@ -13,7 +13,7 @@ Run: `pardatabase.py <Target Directory>`
 to generate a .pardatabase folder in the target directory with all of the parity files needed. If any files are modified in the future, simply run it again to create new parity files for any modified files. Press Ctrl-C at anytime to pause par2 file generation
 
 Get more detailed help with: `pardatabase.py -h`
-  
+
 
 | | |
 | :---   | :--- |
@@ -33,7 +33,7 @@ Get more detailed help with: `pardatabase.py -h`
 ## Debugging
 
   * Error: `what(): basic_string::at: __n (which is 1) >= this->size() (which is 1)`
-    - This is a par2 error caused by [single character file names.](https://github.com/Parchive/par2cmdline/issues/145) 
+    - This is a par2 error caused by [single character file names.](https://github.com/Parchive/par2cmdline/issues/145)
     - The solution is to update your version of par2.
     - If this can’t be done, then you can run the program with the `--singlecharfix` option to temporarily rename these files.
 
@@ -42,8 +42,8 @@ Get more detailed help with: `pardatabase.py -h`
 To fake corrupt a file, try appending to a text file, while keeping the modification date in the past.
 
 
-  * `echo "new text" >> a.uniquely.named.test.file.txt`
+  * `date '+%H:%M:%S'` >> a.uniquely.named.test.file.txt`
   * `pardatabase.py`
-  * `echo "new text" >> a.uniquely.named.test.file.txt`
+  * `date '+%H:%M:%S'` >> a.uniquely.named.test.file.txt`
   * `touch -d 2000-01-1 a.uniquely.named.test.file.txt`
   * `pardatabase.py' --repair`
