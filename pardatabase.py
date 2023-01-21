@@ -313,7 +313,6 @@ class Database:
                 continue
 
             tprint(fp.progress(filename=fullpath)['default'] + ':', relpath)
-            time.sleep(1)
 
             if info.hash != self.get_hash(info.fullpath):
                 print("\n\nError in file!", relpath)
