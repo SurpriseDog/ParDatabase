@@ -173,7 +173,7 @@ def walk(dirname, exclude, minimum=1, maximum=None):
 class Database:
     "Database of files, hashes and their par2 files"
 
-    def __init__(self, basedir, target, minimum=1, maximum=None):
+    def __init__(self, basedir, target,):
 
         # Base directory to put the .pardatabase files
         self.basedir = os.path.join(basedir, '.pardatabase')
@@ -183,11 +183,7 @@ class Database:
         self.files = self.load()            # relative filename to Info
         self.visited = []                   # List of files visited by scanner
         self.delay = None                   # Delay after hashing
-
         self.new_pars = []                  # Files to calculate .par2
-        self.data2process = 0               # Data left to process into .par2
-        self.minimum = minimum or 1         # Minimum size to parity is at least 1 byte
-        self.maximum = maximum or None
 
 
     def load(self,):
@@ -209,15 +205,20 @@ class Database:
         self.hexbase.save(out)
 
 
-    def scan(self, minimum=None, maximum=None):
-        minimum = minimum or 1
-        maximum = maximum or 0
+    def scan(self, minscan=None, maxscan=None,):
+        '''
+        Walk through file tree looking for files that need to be processed
+        minscan         = Minimum file size to scan
+        maxscan         = Maximum file size to scan
+        '''
+        minscan = minscan or 1
+        maxscan = maxscan or 0
 
-        "Walk through file tree looking for files that need to be processed."
+
         start_time = tpc()
         visited = []
         print("\nScanning file tree:", self.target)
-        for stat, pathname in walk(self.target, exclude=self.basedir, minimum=minimum, maximum=maximum):
+        for stat, pathname in walk(self.target, exclude=self.basedir, minimum=minscan, maximum=maxscan):
             relpath = self.rel_path(pathname)
             visited.append(relpath)
             mtime = stat.st_mtime
@@ -225,28 +226,13 @@ class Database:
                 info = self.files[relpath]
                 info.pathname = relpath
                 if mtime > info.mtime or not info.hash or info.hash not in self.hexbase.pfiles:
-                    self.new_par(info)
+                    self.new_pars.append(info)
             else:
                 info = Info(relpath, base=self.target)
-                self.new_par(info)
+                self.new_pars.append(info)
             self.files[relpath] = info
         print("Done. Scanned", len(visited), 'files in', fmt_time(tpc() - start_time))
         self.visited.extend(visited)
-
-
-
-    def new_par(self, info):
-        "Do user arguments allow parity to be created for file?"
-        size = info.size
-        if self.minimum and size < self.minimum:
-            return False
-        if self.maximum and size > self.maximum:
-            return False
-
-        self.new_pars.append(info)
-        self.data2process += size
-        return True
-
 
 
     def get_hash(self, path):
@@ -326,8 +312,7 @@ class Database:
 
         print('\nChecking .par2 files in database:')
         self.hexbase.verify()
-
-        return file_errors
+        return not bool(file_errors)
 
 
     def repair(self, name):
@@ -363,18 +348,35 @@ class Database:
 
 
 
-    def gen_pars(self, sequential=False, singlecharfix=False, par2_options=None):
-        "Rehash files and Generate new .par2 files"
+    def gen_pars(self, minpar=None, maxpar=None, sequential=False, singlecharfix=False, par2_options=None):
+        '''Rehash files and Generate new .par2 files
+        sequential      = Run in sequential mode (generate hash first, then parity)
+        minpar          = Minimum file size to parity
+        maxpar          = Maximum file size to parity
+        singlecharfix   = Rename files before running par2
+        par2_options    = Passed onto par2 program
+        '''
 
-        if not self.new_pars:
+
+
+        newpars = []            # Files to process that meet reqs
+        data2process = 0        # Data left to process into .par2
+        for info in self.new_pars:
+            size = info.size
+            if (minpar and size < maxpar) or (maxpar and size > maxpar):
+                continue
+            newpars.append(info)
+            data2process += size
+
+        if not newpars:
             return False
 
-        print("\nCreating parity for", len(self.new_pars), 'files spanning', rfs(self.data2process))
+        print("\nCreating parity for", len(newpars), 'files spanning', rfs(data2process))
 
         last_save = time.time() # Last time database was saved
-        fp = FileProgress(len(self.new_pars), self.data2process)
+        fp = FileProgress(len(newpars), data2process)
         results = []
-        for count, info in enumerate(self.new_pars):
+        for count, info in enumerate(newpars):
             # + = multi - = sequential     '+-'[sequential],
             tprint("File", fp.progress(info.size)['default'] + ':', info.pathname)
 
@@ -459,9 +461,9 @@ class Database:
 
         # File read error or par2 error
         if code:
-            print("\npar2 returned code:", code)
-            if len(os.path.basename(old_name)) == 1 and not singlecharfix:
-                print("Run the program with --singlecharfix or update par2 to fix these errors")
+            print("par2 returned code:", code)
+        if len(os.path.basename(old_name)) == 1 and not singlecharfix:
+            print("Run the program with --singlecharfix or update par2 to fix these errors\n")
         if not info.hash or code:
             return False, []
 
@@ -473,7 +475,7 @@ def main():
     if not uargs:
         return False
 
-    db = Database(uargs['basedir'], uargs['target'], uargs['min'], uargs['max'])
+    db = Database(uargs['basedir'], uargs['target'],)
     if uargs['delay']:
         db.delay = uargs['delay']
 
@@ -483,12 +485,12 @@ def main():
 
     # Verify files in database
     if uargs['verify']:
-        db.scan()
+        db.scan(uargs['minscan'], uargs['maxscan'])
         return db.verify()
 
     # Check for files deleted from database
     if uargs['clean']:
-        db.scan()
+        db.scan(uargs['minscan'], uargs['maxscan'])
         print("\n\nRunning database cleaner...")
         db.cleaner()
         db.save()
@@ -498,8 +500,8 @@ def main():
     # Walk through file tree looking for files that need to be processed
     db.scan(uargs['minscan'], uargs['maxscan'])
     # Generate new parity files
-    db.gen_pars(sequential=uargs['sequential'], singlecharfix=uargs['singlecharfix'])
-
+    db.gen_pars(minpar=uargs['min'], maxpar=uargs['max'], sequential=uargs['sequential'], \
+                singlecharfix=uargs['singlecharfix'], par2_options=uargs['options'])
 
     db.save()
     return True
