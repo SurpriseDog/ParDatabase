@@ -55,12 +55,12 @@ def parse_args():
     ['clean', '', bool],
     "Delete old unused .par2 files from the database.",
 
-    ['min', '', str],
+    ['min', 'minpar', str],
     '''
     Minimum file size to produce par2 files
     Example: --min 4k
     ''',
-    ['max', '', str],
+    ['max', 'maxpar', str],
     '''
     Maximum file size to produce par2 files
     Example: --max 1G
@@ -134,7 +134,7 @@ def parse_args():
 
 
     # Convert user data sizes
-    for arg in 'min max minscan maxscan'.split():
+    for arg in 'minpar maxpar minscan maxscan'.split():
         if args[arg]:
             args[arg] = ConvertDataSize()(args[arg])
 
@@ -213,6 +213,7 @@ class Database:
         '''
         minscan = minscan or 1
         maxscan = maxscan or 0
+        print(minscan, maxscan)
 
 
         start_time = tpc()
@@ -291,6 +292,7 @@ class Database:
         missing = 0         # Files with missing hashes
         for relpath, info in self.files.items():
             if not info.hash:
+                print(relpath)
                 missing += 1
                 continue
 
@@ -303,7 +305,7 @@ class Database:
             if info.hash != self.get_hash(info.fullpath):
                 print("\n\nError in file!", relpath)
                 file_errors.append(relpath)
-        tprint("Done. Hashed", fp.done()['msg'])
+        tprint("Done. Hashed", fp.done()['msg'], '\n')
 
         if missing:
             print('\n')
@@ -356,29 +358,50 @@ class Database:
         singlecharfix   = Rename files before running par2
         par2_options    = Passed onto par2 program
         '''
-
-
+        minpar = minpar or 1    # Minimum size to parity
 
         newpars = []            # Files to process that meet reqs
-        data2process = 0        # Data left to process into .par2
+        newhashes = []
+
         for info in self.new_pars:
             size = info.size
-            if (minpar and size < maxpar) or (maxpar and size > maxpar):
-                continue
-            newpars.append(info)
-            data2process += size
+            if size < minpar or (maxpar and size > maxpar):
+                if not info.hash:
+                    newhashes.append(info)
+            else:
+                newpars.append(info)
+
+        if newpars and newhashes:
+            print("\nBased on the options selected:")
+            print(len(newhashes), "files will be hashed without parity and")
+            print(len(newpars), "files will be both hashed and have parity files created.")
+
+        if newhashes:
+            data2process = sum(info.size for info in newhashes)
+            fp = FileProgress(len(newhashes), data2process)
+            print("\nCreating only hashes for",
+                  len(newhashes), 'files spanning', rfs(data2process))
+            for info in newhashes:
+                size = info.size
+                tprint("File", fp.progress(size)['default'] + ':', info.pathname)
+                info.hash = self.get_hash(info.fullpath)
+            tprint("\nDone. Processed", fp.done()['msg'])
+            print()
 
         if not newpars:
             return False
 
-        print("\nCreating parity for", len(newpars), 'files spanning', rfs(data2process))
+        data2process = sum(info.size for info in newpars)
+        print("\nCreating parity and hashes for",
+              len(newpars), 'files spanning', rfs(data2process))
 
         last_save = time.time() # Last time database was saved
         fp = FileProgress(len(newpars), data2process)
         results = []
         for count, info in enumerate(newpars):
             # + = multi - = sequential     '+-'[sequential],
-            tprint("File", fp.progress(info.size)['default'] + ':', info.pathname)
+            size = info.size
+            tprint("File", fp.progress(size)['default'] + ':', info.pathname)
 
             status, files = self.generate(info, sequential, singlecharfix, par2_options)
             results.append(status)
@@ -402,6 +425,7 @@ class Database:
                 results.pop(0)
 
         tprint("\nDone. Processed", fp.done()['msg'])
+        print()
         return True
 
 
@@ -500,8 +524,10 @@ def main():
     # Walk through file tree looking for files that need to be processed
     db.scan(uargs['minscan'], uargs['maxscan'])
     # Generate new parity files
-    db.gen_pars(minpar=uargs['min'], maxpar=uargs['max'], sequential=uargs['sequential'], \
-                singlecharfix=uargs['singlecharfix'], par2_options=uargs['options'])
+    db.gen_pars(minpar=uargs['minpar'], maxpar=uargs['maxpar'],
+                sequential=uargs['sequential'],
+                singlecharfix=uargs['singlecharfix'],
+                par2_options=uargs['options'])
 
     db.save()
     return True
