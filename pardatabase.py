@@ -384,6 +384,7 @@ class Database:
                 size = info.size
                 tprint("File", fp.progress(size)['default'] + ':', info.pathname)
                 info.hash = self.get_hash(info.fullpath)
+                info.update()
             tprint("\nDone. Processed", fp.done()['msg'])
             print()
 
