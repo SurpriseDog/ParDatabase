@@ -213,7 +213,6 @@ class Database:
         '''
         minscan = minscan or 1
         maxscan = maxscan or 0
-        print(minscan, maxscan)
 
 
         start_time = tpc()
@@ -292,7 +291,6 @@ class Database:
         missing = 0         # Files with missing hashes
         for relpath, info in self.files.items():
             if not info.hash:
-                print(relpath)
                 missing += 1
                 continue
 
@@ -305,7 +303,8 @@ class Database:
             if info.hash != self.get_hash(info.fullpath):
                 print("\n\nError in file!", relpath)
                 file_errors.append(relpath)
-        tprint("Done. Hashed", fp.done()['msg'], '\n')
+        tprint("Done. Hashed", fp.done()['msg'])
+        print()
 
         if missing:
             print('\n')
