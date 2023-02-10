@@ -373,7 +373,7 @@ class Database:
         if newpars and newhashes:
             print("\nBased on the options selected:")
             print(len(newhashes), "files will be hashed without parity and")
-            print(len(newpars), "files will be both hashed and have parity files created.")
+            print(len(newpars), "files will be both hashed and have parity files created")
 
         if newhashes:
             data2process = sum(info.size for info in newhashes)

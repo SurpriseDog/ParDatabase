@@ -3,23 +3,44 @@
 import os
 import time
 import shutil
+import unicodedata
 from sd.common import fmt_time, rfs
 
 
-
-def tprint(*args, **kargs):
-    '''
-    Terminal print: Erasable text in terminal
-    newline = True will leave the text on the line
-    '''
-
-    term_width = shutil.get_terminal_size()[0]      # 2.5 microseconds
+def tprint(*args, ending='...', **kargs):
+    "Terminal print: Erasable text in terminal"
+    length = shutil.get_terminal_size()[0]      # 2.5 microseconds
     text = ' '.join(map(str, args))
-    if len(text) > term_width:
-        text = text[:term_width-3] + '...'
+
+    # Sum up the width of each character in the text
+    # Special thanks to this answer https://stackoverflow.com/q/48598304/11343425
+    widths = []             # Widths of each character in the text
+    total = 0               # Total width seen thus fur
+    for c in text:
+        if 32 <= ord(c) <= 126:
+            wide = 1
+        elif unicodedata.category(c)[0] in ('M', 'C'):
+            wide = 0
+        elif unicodedata.east_asian_width(c) in ('N', 'Na', 'H', 'A'):
+            wide = 1
+        else:
+            wide = 2
+        widths.append(wide)
+        total += wide
+
+        # If total exceeds length, delete chars at end one by one until the ending ... can be fit in
+        if total > length:
+            length -= len(ending)
+            while total > length and widths:
+                total -= widths.pop(-1)
+            text = text[:len(widths)] + ending
+            break
 
     # Filling out the end of the line with spaces ensures that if something else prints it will not be mangled
-    print('\r' + text + ' ' * (term_width - len(text)), **kargs, end='')
+    print('\r' + text + ' ' * (length - total), **kargs, end='')
+
+    # Test wth the toxic megacolons:  tprint('：'*222)
+
 
 
 class FileProgress:
