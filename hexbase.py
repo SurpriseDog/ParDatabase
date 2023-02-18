@@ -97,7 +97,7 @@ class HexBase:
                         self.last_save = meta['mtime']
                         good = path
                         break
-                except (OSError, ValueError):
+                except (OSError, ValueError, EOFError):
                     print("Error loading database:", path)
         else:
             # If no good database detected:
