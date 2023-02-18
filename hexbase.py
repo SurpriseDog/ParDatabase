@@ -118,21 +118,6 @@ class HexBase:
         if mintime and time.time() - self.last_save < mintime:
             return False
 
-
-
-        '''
-        if os.path.exists(self.index):
-            existing = []                   # existing database.xz files
-            for name in os.listdir(self.basedir):
-                if name.startswith('database.') and name.endswith('.xz'):
-                    existing.append(name)
-            if time.time() - self.last_save > 3600 * 8 or len(existing) < 2:
-                copy_name = os.path.splitext(self.index)[0] + '.' + str(int(self.last_save)) + '.xz'
-                shutil.copy(self.index, copy_name)
-                for name in sorted(existing)[3:]:
-                    print("Removing old database file:", name)
-                    os.remove(os.path.join(self.basedir, name))
-        '''
         # Rotate any old backup files
         baks = rotate(self.index)
 
