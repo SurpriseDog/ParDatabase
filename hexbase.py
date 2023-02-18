@@ -21,6 +21,33 @@ def user_answer(text='Y/N ?'):
             return True
 
 
+def rotate(path, limit=3, prefix='.', move=True, verbose=False):
+    '''Given a file path, move files through a progression until limit is reached and delete oldest file,.''
+    limit = Max number of files before deleting final one
+    prefix = add a prefix before each number
+    move = Actually move the files instead of just listing them
+
+    Returns list of files in sequence
+
+    '''
+    files = [path]
+    path = os.path.splitext(path)
+    files += [path[0] + prefix + str(num) + path[1] for num in range(1, limit+1)]
+    dest = files.pop(-1)
+    if move:
+        if os.path.exists(dest):
+            if verbose:
+                print("Removing", dest)
+            os.remove(dest)
+        for src in reversed(files):
+            if os.path.exists(src):
+                if verbose:
+                    print("Moving", src, dest)
+                os.rename(src, dest)
+            dest = src
+    return files
+
+
 class HexBase:
     "Store files with unique hashed file names in hex folder structure"
 
@@ -57,15 +84,26 @@ class HexBase:
             os.makedirs(self.locate(folder), exist_ok=True)
 
         # Load the database if possible
-        if os.path.exists(self.index):
-            with lzma.open(self.index, mode='rt') as f:
-                meta, self.data, self.pfiles = json.load(f)
-                if meta['hash']:
-                    self.hashname = meta['hash']
-                self.version = meta['version']
-                self.last_save = meta['mtime']
-
+        baks = rotate(self.index, move=False)
+        good = None         # Name of file successfully loaded
+        for path in baks:
+            if os.path.exists(path):
+                try:
+                    with lzma.open(path, mode='rt') as f:
+                        meta, self.data, self.pfiles = json.load(f)
+                        if meta['hash']:
+                            self.hashname = meta['hash']
+                        self.version = meta['version']
+                        self.last_save = meta['mtime']
+                        good = path
+                        break
+                except (OSError, ValueError):
+                    print("Error loading database:", path)
         else:
+            # If no good database detected:
+            if not good and os.path.exists(baks[0]):
+                print("Corrupted database moved to", baks[1])
+                rotate(self.index)
             if hashname:
                 self.hashname = hashname
 
@@ -74,9 +112,15 @@ class HexBase:
             self.hashfunc = vars(hashlib)[self.hashname]
 
 
-    def save(self, data=None):
-        "Save the database in lzma which adds a nice checksum"
-        # Rotate the database and delete old versions
+    def save(self, data=None, mintime=0):
+        "Save the database in lzma which adds a nice checksum and rotate"
+
+        if mintime and time.time() - self.last_save < mintime:
+            return False
+
+
+
+        '''
         if os.path.exists(self.index):
             existing = []                   # existing database.xz files
             for name in os.listdir(self.basedir):
@@ -88,6 +132,9 @@ class HexBase:
                 for name in sorted(existing)[3:]:
                     print("Removing old database file:", name)
                     os.remove(os.path.join(self.basedir, name))
+        '''
+        # Rotate any old backup files
+        baks = rotate(self.index)
 
         # Save to file
         with lzma.open(self.index, mode='wt', check=lzma.CHECK_CRC64, preset=2) as f:
@@ -105,13 +152,11 @@ class HexBase:
             os.fsync(f)
 
 
-        # Save backup of backup
-        src = os.path.splitext(self.index)
-        bak = src[0] + '.bak' + src[1]
-        src = self.index
-        if os.path.exists(bak):
-            os.remove(bak)
-        shutil.copy(src, bak)
+        # If only copy, make a backup
+        if not os.path.exists(baks[1]):
+            shutil.copy(baks[0], baks[1])
+
+        return True
 
 
     def clean(self, fhash):

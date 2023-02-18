@@ -6,14 +6,13 @@ import shutil
 import unicodedata
 from sd.common import fmt_time, rfs
 
-
 def tprint(*args, ending='...', **kargs):
     "Terminal print: Erasable text in terminal"
     length = shutil.get_terminal_size()[0]      # 2.5 microseconds
     text = ' '.join(map(str, args))
-
     # Sum up the width of each character in the text
     # Special thanks to this answer https://stackoverflow.com/q/48598304/11343425
+    # Measured at 20 microseconds on slow hardware excluding print statement
     widths = []             # Widths of each character in the text
     total = 0               # Total width seen thus fur
     for c in text:

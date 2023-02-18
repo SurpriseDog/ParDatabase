@@ -198,11 +198,11 @@ class Database:
         return files
 
 
-    def save(self,):
+    def save(self, *args, **kargs):
         out = dict()
         for key, val in self.hexbase.data.items():
             out[key] = val.tojson()
-        self.hexbase.save(out)
+        self.hexbase.save(out, *args, **kargs)
 
 
     def scan(self, minscan=None, maxscan=None,):
@@ -395,7 +395,6 @@ class Database:
         print("\nCreating parity and hashes for",
               len(newpars), 'files spanning', rfs(data2process))
 
-        last_save = time.time() # Last time database was saved
         fp = FileProgress(len(newpars), data2process)
         results = []
         for count, info in enumerate(newpars):
@@ -417,9 +416,9 @@ class Database:
 
 
             # Save every hour
-            if not count % 10 and time.time() - last_save >= 3600:
-                self.save()
-                last_save = time.time()
+            if not count % 10:
+                if self.save(mintime=3600):
+                    print("Database saved successfuly at", time.strftime('%H:%M'))
 
             if len(results) > 5:
                 results.pop(0)
