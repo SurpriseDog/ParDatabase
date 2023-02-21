@@ -30,7 +30,7 @@ def rotate(path, limit=3, prefix='.', move=True, verbose=False):
             dest = files[-1]
             if verbose:
                 print("Removing", dest)
-                os.remove(dest)
+            os.remove(dest)
 
         # Go thru file list backwards, moving each one
         dest = files[gap]
