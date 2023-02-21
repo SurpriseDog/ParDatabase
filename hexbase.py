@@ -6,6 +6,7 @@ import json
 import shutil
 import hashlib
 
+from sd.rotate import rotate
 from sd.file_progress import FileProgress, tprint
 
 
@@ -19,33 +20,6 @@ def user_answer(text='Y/N ?'):
             return False
         if ans == 'y':
             return True
-
-
-def rotate(path, limit=3, prefix='.', move=True, verbose=False):
-    '''Given a file path, move files through a progression until limit is reached and delete oldest file,.''
-    limit = Max number of files before deleting final one
-    prefix = add a prefix before each number
-    move = Actually move the files instead of just listing them
-
-    Returns list of files in sequence
-
-    '''
-    files = [path]
-    path = os.path.splitext(path)
-    files += [path[0] + prefix + str(num) + path[1] for num in range(1, limit+1)]
-    dest = files.pop(-1)
-    if move:
-        if os.path.exists(dest):
-            if verbose:
-                print("Removing", dest)
-            os.remove(dest)
-        for src in reversed(files):
-            if os.path.exists(src):
-                if verbose:
-                    print("Moving", src, dest)
-                os.rename(src, dest)
-            dest = src
-    return files
 
 
 class HexBase:
