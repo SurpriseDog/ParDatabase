@@ -44,7 +44,7 @@ def rotate(path, limit=3, prefix='.', move=True, verbose=False):
 
 
 
-def main():
+def _main():
     if len(sys.argv) - 1 >= 1:
         filename = sys.argv[1]
     else:
@@ -66,4 +66,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(not main())
+    sys.exit(not _main())
