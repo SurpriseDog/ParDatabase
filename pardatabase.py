@@ -464,7 +464,7 @@ class Database:
         signal.signal(signal.SIGINT, interrupt)     # Catch Ctrl-C
         rename(old_name, new_name)                  # Fix 1 char filenames (if needed)
         if sequential:
-            info.hash = self.get_hash(info.fullpath)
+            info.hash = self.get_hash(new_name)
             if info.hash in self.hexbase.pfiles:
                 rename(new_name, old_name)
                 return False, []

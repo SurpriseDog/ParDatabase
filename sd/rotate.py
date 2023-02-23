@@ -18,7 +18,6 @@ def rotate(path, limit=3, prefix='.', move=True, verbose=False):
     files = [path]
     path = os.path.splitext(path)
     files += [path[0] + prefix + str(num) + path[1] for num in range(1, limit+1)]
-    print(files)
     if move:
 
         # Go thru file list looking for the first missing file
