@@ -4,7 +4,7 @@
 import os
 import sys
 
-def rotate(path, limit=3, prefix='.', move=True, verbose=False):
+def rotate(path, limit=5, prefix='.', move=True, verbose=False):
     '''Given a file path, Rotate files in a sequence 1, 2, 3... up to limit,
     and delete last file if and only if the sequence is full with no gaps
 
@@ -53,7 +53,7 @@ def _main():
     if len(sys.argv) - 1 >= 2:
         limit = int(sys.argv[2])
     else:
-        limit = 3
+        limit = 5
 
     if len(sys.argv) - 1 >= 3:
         prefix = sys.argv[3]

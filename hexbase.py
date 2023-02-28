@@ -9,7 +9,7 @@ import hashlib
 from sd.rotate import rotate
 from sd.file_progress import FileProgress, tprint
 
-
+BAK_NUM = 8     # Number of database backups
 
 def user_answer(text='Y/N ?'):
     "Ask the user yes/no questions"
@@ -58,7 +58,7 @@ class HexBase:
             os.makedirs(self.locate(folder), exist_ok=True)
 
         # Load the database if possible
-        baks = rotate(self.index, move=False)
+        baks = rotate(self.index, move=False, limit=BAK_NUM)
         good = None         # Name of file successfully loaded
         for path in baks:
             if os.path.exists(path):
@@ -77,7 +77,7 @@ class HexBase:
             # If no good database detected:
             if not good and os.path.exists(baks[0]):
                 print("Corrupted database moved to", baks[1])
-                rotate(self.index)
+                rotate(self.index, limit=BAK_NUM)
             if hashname:
                 self.hashname = hashname
 
@@ -93,7 +93,7 @@ class HexBase:
             return False
 
         # Rotate any old backup files
-        baks = rotate(self.index)
+        baks = rotate(self.index, limit=BAK_NUM)
 
         # Save to file
         with lzma.open(self.index, mode='wt', check=lzma.CHECK_CRC64, preset=2) as f:

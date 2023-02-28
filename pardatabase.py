@@ -76,6 +76,8 @@ def parse_args():
     Maximum file size to scan
     Example: --max 1G
     ''',
+    ['nice', '', int, 8],
+    "Run program with a nice level, 0=disable",
     ['singlecharfix', '', bool],
     "Temporarily rename files to fix a bug in par2.",
     "Clean database of extraneous files",
@@ -497,6 +499,7 @@ def main():
     uargs = parse_args()            # User arguments
     if not uargs:
         return False
+    os.nice(uargs['nice'])
 
     db = Database(uargs['basedir'], uargs['target'],)
     if uargs['delay']:
