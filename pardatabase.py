@@ -302,7 +302,12 @@ class Database:
 
             tprint(fp.progress(filename=fullpath)['default'] + ':', relpath)
 
+            if os.path.getmtime(info.fullpath) > info.mtime + 1e-3:
+                print("File updated on disk without being rescanned:", relpath)
+                continue
+
             if info.hash != self.get_hash(info.fullpath):
+                print(info, vars(info))
                 print("\n\nError in file!", relpath)
                 file_errors.append(relpath)
         tprint("Done. Hashed", fp.done()['msg'])
