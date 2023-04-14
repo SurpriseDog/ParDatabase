@@ -4,6 +4,7 @@
 
 import os
 import sys
+import time
 import shutil
 import hashlib
 
@@ -18,8 +19,7 @@ try:
     import psutil
     psutil.Process().ionice(psutil.IOPRIO_CLASS_IDLE)
 except ModuleNotFoundError:
-    print("Install psutil with: pip3 install psutil")
-    print("to automatically reduce the io impact of this program.\n\n")
+    pass
 
 
 def parse_args():
@@ -142,8 +142,8 @@ def main():
     uargs = parse_args()            # User arguments
     if not uargs:
         return False
-    os.nice(uargs['nice'])
 
+    os.nice(uargs['nice'])
     db = Database(uargs['basedir'], uargs['target'],)
     db.delay = uargs['delay'] if uargs['delay'] else db.delay
 
@@ -184,10 +184,19 @@ def main():
         return True
 
 
+def super_main():
+    "Wrapper for main"
+    if not shutil.which('par2'):
+        print("Please install par2 to continue")
+        return False
+
+    start_time = time.time()
+    status = main()
+    if status and 'psutil' not in sys.modules and time.time() - start_time > 60:
+        print("\n\nInstall psutil with: pip3 install psutil")
+        print("to automatically reduce the io impact of this program.")
+    return status
 
 
 if __name__ == "__main__":
-    if not shutil.which('par2'):
-        print("Please install par2 to continue")
-        sys.exit(1)
-    sys.exit(not main())
+    sys.exit(not super_main())
