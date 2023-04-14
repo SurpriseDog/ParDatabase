@@ -287,6 +287,8 @@ class Database:
 
         # Look for files with errors
         file_errors = []                # List of files with errors in them
+        updated = 0                     # Files updated on the disk, but not in database
+
         print('\nVerifying hashes of all files referenced in database:')
 
         fp = FileProgress(len(self.files), sum(info.size for info in self.files.values()))
@@ -303,6 +305,7 @@ class Database:
             tprint(fp.progress(filename=fullpath)['default'] + ':', relpath)
 
             if os.path.getmtime(info.fullpath) > info.mtime + 1e-3:
+                updated += 1
                 print("File updated on disk without being rescanned:", relpath)
                 continue
 
@@ -310,6 +313,7 @@ class Database:
                 print(info, vars(info))
                 print("\n\nError in file!", relpath)
                 file_errors.append(relpath)
+
         tprint("Done. Hashed", fp.done()['msg'])
         print()
 
@@ -317,6 +321,16 @@ class Database:
             print('\n')
             print(missing, 'files had no hash in the database')
             print("Run pardatabase without the --verify to add them.")
+
+        if updated:
+            print('\n')
+            print(updated, 'files were updated on the disk without being rescanned.')
+            print("Run pardatabase without the --verify to add them.")
+
+        if updated > 10 and updated / len(self.files) > 0.2:
+            print("Set up pardatabse with a LazyCron job to ensure" + \
+                  "that the database is consistently updated.")
+            print("https://github.com/SurpriseDog/LazyCron")
 
         print('\nChecking .par2 files in database:')
         self.hexbase.verify()
@@ -410,6 +424,8 @@ class Database:
             tprint("File", fp.progress(size)['default'] + ':', info.pathname)
 
             status, files = self.generate(info, sequential, singlecharfix, par2_options)
+            if status:
+                info.update()
             results.append(status)
 
             for number, name in enumerate(files):
@@ -500,6 +516,7 @@ class Database:
         return True, info.find_tmp()
 
 
+
 def main():
     uargs = parse_args()            # User arguments
     if not uargs:
@@ -507,37 +524,43 @@ def main():
     os.nice(uargs['nice'])
 
     db = Database(uargs['basedir'], uargs['target'],)
-    if uargs['delay']:
-        db.delay = uargs['delay']
+    db.delay = uargs['delay'] if uargs['delay'] else db.delay
 
-    # Repair single file and quit, if requested
+    # Make sure the database exists for key operations
+    if any([uargs[key] for key in uargs if key in ('repair', 'verify', 'clean')]):
+        if not db.files:
+            print("There is no pardatabase for", db.target)
+            print("Run again without the '--verify' to generate one.")
+            return False
+
+
     if uargs['repair']:
+        # Repair single file and quit, if requested
         return db.repair(uargs['repair'])
 
-    # Verify files in database
-    if uargs['verify']:
+    elif uargs['verify']:
+        # Verify files in database
         db.scan(uargs['minscan'], uargs['maxscan'])
         return db.verify()
 
-    # Check for files deleted from database
-    if uargs['clean']:
+    elif uargs['clean']:
+        # Check for files deleted from database
         db.scan(uargs['minscan'], uargs['maxscan'])
         print("\n\nRunning database cleaner...")
         db.cleaner()
         db.save()
         return True
 
-
-    # Walk through file tree looking for files that need to be processed
-    db.scan(uargs['minscan'], uargs['maxscan'])
-    # Generate new parity files
-    db.gen_pars(minpar=uargs['minpar'], maxpar=uargs['maxpar'],
-                sequential=uargs['sequential'],
-                singlecharfix=uargs['singlecharfix'],
-                par2_options=uargs['options'])
-
-    db.save()
-    return True
+    else:
+        # Walk through file tree looking for files that need to be processed
+        db.scan(uargs['minscan'], uargs['maxscan'])
+        # Generate new parity files
+        db.gen_pars(minpar=uargs['minpar'], maxpar=uargs['maxpar'],
+                    sequential=uargs['sequential'],
+                    singlecharfix=uargs['singlecharfix'],
+                    par2_options=uargs['options'])
+        db.save()
+        return True
 
 
 
