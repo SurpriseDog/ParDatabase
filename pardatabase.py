@@ -154,34 +154,47 @@ def main():
             print("Run again without the '--verify' to generate one.")
             return False
 
-
     if uargs['repair']:
         # Repair single file and quit, if requested
         return db.repair(uargs['repair'])
 
-    elif uargs['verify']:
+    if uargs['verify']:
         # Verify files in database
-        db.scan(uargs['minscan'], uargs['maxscan'])
         return db.verify()
 
-    elif uargs['clean']:
+    if uargs['clean']:
         # Check for files deleted from database
-        db.scan(uargs['minscan'], uargs['maxscan'])
         print("\n\nRunning database cleaner...")
         db.cleaner()
         db.save()
         return True
 
-    else:
-        # Walk through file tree looking for files that need to be processed
-        db.scan(uargs['minscan'], uargs['maxscan'])
-        # Generate new parity files
-        db.gen_pars(minpar=uargs['minpar'], maxpar=uargs['maxpar'],
+
+    # Walk through file tree looking for files that need to be processed
+    newpars, newhashes = db.scan(minscan=uargs['minscan'],
+                                 maxscan=uargs['maxscan'],
+                                 minpar=uargs['minpar'],
+                                 maxpar=uargs['maxpar'],
+                                 )
+    if newpars and newhashes:
+        print("\nBased on the options selected:")
+        print(len(newhashes), "files will be hashed without parity and")
+        print(len(newpars), "files will be both hashed and have parity files created")
+
+    # Hash files without creating parity
+    if newhashes:
+        db.gen_hashes(newhashes)
+
+    # Generate new parity files
+    if newpars:
+        db.gen_pars(newpars,
                     sequential=uargs['sequential'],
                     singlecharfix=uargs['singlecharfix'],
                     par2_options=uargs['options'])
+
+    if newhashes or newpars:
         db.save()
-        return True
+    return True
 
 
 def super_main():
