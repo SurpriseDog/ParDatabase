@@ -6,8 +6,6 @@ import os
 import sys
 import time
 import shutil
-import hashlib
-
 
 from database import Database
 from sd.easy_args import easy_parse
@@ -153,7 +151,7 @@ def main():
     if any([uargs[key] for key in uargs if key in ('repair', 'verify', 'clean')]):
         if not db.files:
             print("There is no pardatabase for", db.target)
-            print("Run again without the '--verify' to generate one.")
+            print("Run again without any --options to generate one.")
             return False
 
     if uargs['repair']:

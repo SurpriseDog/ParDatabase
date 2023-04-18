@@ -13,6 +13,13 @@ from sd.common import fmt_time, rfs
 from sd.file_progress import FileProgress, tprint
 
 
+def cant_read(name):
+    "Look for unreadable files (not missing ones)"
+    if not os.access(name, os.R_OK):
+        print("Could not access", name)
+        return True
+    return False
+
 
 def walk(dirname, exclude, minimum=1, maximum=None):
     "Walk through directory returning entry and pathname"
@@ -25,8 +32,7 @@ def walk(dirname, exclude, minimum=1, maximum=None):
         pathname = os.path.join(dirname, entry.name)
         if pathname.endswith('.par2'):
             continue
-        if not os.access(pathname, os.R_OK):
-            print("Could not access", pathname)
+        if cant_read(pathname):
             continue
         if entry.is_dir():
             if not pathname == exclude:
@@ -206,9 +212,10 @@ class Database:
                 continue
 
             fullpath = info.fullpath
-
             # Files deleted from disk continue to exist in database until cleaner is run
             if not os.path.exists(fullpath):
+                continue
+            if cant_read(fullpath):
                 continue
 
             tprint(fp.progress(filename=fullpath)['default'] + ':', relpath)
