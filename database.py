@@ -166,7 +166,8 @@ class Database:
         for info in self.files.values():
             hashes.setdefault(info.hash, []).append(info)
 
-        # Look for hashes in the database that no longer correspond to .par2 files and delete those par2
+        # Look for hashes in the database that no longer correspond to .par2 files
+        # then delete them
         deleted = 0
         for pathname in list(self.files.keys()):
             if not os.path.exists(self.fullpath(pathname)):
@@ -176,8 +177,16 @@ class Database:
                 if not hashes[info.hash]:
                     deleted += self.hexbase.clean(info.hash)
                 del self.files[pathname]
+
+        # Remove Stray .par2 files caused by files being updated
+        for fhash, par2 in list(self.hexbase.pfiles.items()):
+            if fhash not in hashes:
+                deleted += self.hexbase.clean(fhash)
+
         if deleted:
             print(deleted, 'files removed from database')
+
+
 
 
     def verify(self,):

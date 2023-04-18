@@ -50,7 +50,7 @@ def parse_args():
     ['clean', '', bool],
     "Delete old unused .par2 files from the database.",
 
-    ['min', 'minpar', str],
+    ['min', 'minpar', str, '4k'],
     '''
     Minimum file size to produce par2 files
     Example: --min 4k
@@ -167,6 +167,7 @@ def main():
         print("\n\nRunning database cleaner...")
         db.cleaner()
         db.save()
+        print("Done.")
         return True
 
 
