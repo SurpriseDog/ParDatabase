@@ -45,8 +45,8 @@ def parse_args():
     "Base directory to put the par2 database, (Defaults to the target directory)",
     # ['quiet', '', bool],
     # "Don't print so much",
-    ['hash', '', str, 'sha512'],
-    "Hash function to use",
+    # ['hash', '', str, 'sha512'],
+    # "Hash function to use",
     ['clean', '', bool],
     "Delete old unused .par2 files from the database.",
 
@@ -64,12 +64,12 @@ def parse_args():
     ['minscan', '', str],
     '''
     Minimum file size to scan
-    Example: --min 4k
+    Example: --minscan 4k
     ''',
     ['maxscan', '', str],
     '''
     Maximum file size to scan
-    Example: --max 1G
+    Example: --maxscan 1G
     ''',
     ['nice', '', int, 8],
     "Run program with a nice level, 0=disable",

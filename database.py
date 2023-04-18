@@ -179,7 +179,7 @@ class Database:
                 del self.files[pathname]
 
         # Remove Stray .par2 files caused by files being updated
-        for fhash, par2 in list(self.hexbase.pfiles.items()):
+        for fhash, _ in list(self.hexbase.pfiles.items()):
             if fhash not in hashes:
                 deleted += self.hexbase.clean(fhash)
 
