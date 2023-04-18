@@ -97,11 +97,13 @@ def parse_args():
 
     args = vars(args)
 
+    '''
     # Choose hashing algorithm
     hashes = sorted(list(hashlib.algorithms_guaranteed))
     if args['hash'] not in hashes:
         print("Available hashes are:", hashes)
         return False
+    '''
 
 
     # Verify that basedir and target dir are okay
