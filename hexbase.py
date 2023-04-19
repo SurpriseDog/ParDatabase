@@ -37,7 +37,7 @@ class HexBase:
         self.version = 1.1                      # Database version number
 
         self.hashfunc = hashlib.sha512
-        self.hashname = None                    # Custom user hash
+        self.hashname = 'sha512'                # Custom user hash
         self.hexes = [(('0' + hex(num)[2:])[-2:]).upper() for num in range(0, 256)]
 
 
@@ -81,8 +81,8 @@ class HexBase:
             if hashname:
                 self.hashname = hashname
 
-        if self.hashname:
-            print(self.hashname)
+        if self.hashname and self.hashname != 'sha512':
+            print("Using custom hash:", self.hashname)
             self.hashfunc = vars(hashlib)[self.hashname]
 
 

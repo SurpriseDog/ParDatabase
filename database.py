@@ -9,8 +9,15 @@ from time import perf_counter as tpc
 
 from info import Info
 from hexbase import HexBase
-from sd.common import fmt_time, rfs
+from sd.common import fmt_time, rfs, sig
 from sd.file_progress import FileProgress, tprint
+
+
+def percent(num, digits=0):
+    if not digits:
+        return str(int(num * 100)) + '%'
+    else:
+        return sig(num * 100, digits) + '%'
 
 
 def cant_read(name):
@@ -264,15 +271,19 @@ class Database:
             return False
 
         if name not in self.files:
-            print("Error, No record of filename in database.")
-            print(self.files)
+            print("Error: No record of filename in database.")
             return False
 
         print("\nAttempting repair on", name)
         info = self.files[name]
         dest_files = self.hexbase.get(info.hash, info.cwd)
+        total = 0
         for file in dest_files:
             print("Found parity file:", file)
+            total += os.path.getsize(file)
+        print("Parity files are", percent(total / os.path.getsize(name)), 'of target file')
+
+
         if not dest_files:
             print("No par2 files found for:", name)
             return False

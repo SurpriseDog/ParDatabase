@@ -29,7 +29,6 @@ Get more detailed help with: `pardatabase.py -h`
 | | par2 files will stay in the database until removed with the `--clean` option. Run `pardatabase.py --clean` occasionally to search for and remove these orphaned par2 files. Because pardatabase references files by their hash, 2 or more named files could be identical and sharing the same .par2 files which means that the cleaner will only delete par2 files after all references to them have disappeared from the file-system. |
 | | |
 
-
 ## Debugging
 
   * Error: `what(): basic_string::at: __n (which is 1) >= this->size() (which is 1)`
@@ -47,3 +46,14 @@ To fake corrupt a file, try appending to a text file, while keeping the modifica
   * `date '+%H:%M:%S'` >> a.uniquely.named.test.file.txt`
   * `touch -d 2000-01-1 a.uniquely.named.test.file.txt`
   * `pardatabase.py' --repair`
+
+
+## Future ideas:
+
+Let me know in the github `issues` section if this or any other idea is interesting to you.
+
+  * Creating parity for large files in sections. - This way if only a section of a multi gigabyte file changes, the parity does not have to be recomputed for the entire thing.
+
+  * Copying small files to a database structure. - Since par2 is inefficient for small files under a megabyte, copying the files to a database could make more sense.
+
+  * Compatability with other operating systems such as Windows or Mac.
