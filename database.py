@@ -7,8 +7,8 @@ import time
 import signal
 from time import perf_counter as tpc
 
+import hexbase
 from info import Info
-from hexbase import HexBase
 from sd.common import fmt_time, rfs, sig
 from sd.file_progress import FileProgress, tprint
 
@@ -65,7 +65,7 @@ class Database:
         self.basedir = os.path.join(basedir, '.pardatabase')
 
         self.target = target                # Target directory to scan
-        self.hexbase = HexBase(self.basedir)
+        self.hexbase = hexbase.HexBase(self.basedir)
         self.files = self.load()            # relative filename to Info
         self.delay = None                   # Delay after hashing
 
@@ -232,7 +232,7 @@ class Database:
                 print("File updated on disk without being rescanned:", relpath)
                 continue
 
-            if info.hash != self.get_hash(info.fullpath):
+            if not hexbase.hash_cmp(info.hash, self.get_hash(info.fullpath)):
                 print(info, vars(info))
                 print("\n\nError in file!", relpath)
                 file_errors.append(relpath)

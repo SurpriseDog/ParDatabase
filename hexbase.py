@@ -10,6 +10,8 @@ from sd.rotate import rotate
 from sd.file_progress import FileProgress, tprint
 
 BAK_NUM = 8     # Number of database backups
+TRUNCATE = 64   # Hashes are truncated to 64 hex = 256 bits for space savings in database.xz
+VERSION = 1.2   # Database version number
 
 def user_answer(text='Y/N ?'):
     "Ask the user yes/no questions"
@@ -20,6 +22,12 @@ def user_answer(text='Y/N ?'):
             return False
         if ans == 'y':
             return True
+
+
+def hash_cmp(a, b):
+    if a[:TRUNCATE] != b[:TRUNCATE]:
+        return False
+    return True
 
 
 class HexBase:
@@ -34,7 +42,7 @@ class HexBase:
         self.pfiles = dict()                    # hashes to dict(par file name : hash of par file)
         self.data = dict()                      # Anything that can be serialized into json
         self.last_save = 0                      # Last save time
-        self.version = 1.1                      # Database version number
+        self.version = VERSION                  # Database version number
 
         self.hashfunc = hashlib.sha512
         self.hashname = 'sha512'                # Custom user hash
@@ -85,6 +93,10 @@ class HexBase:
             print("Using custom hash:", self.hashname)
             self.hashfunc = vars(hashlib)[self.hashname]
 
+        if self.version < 1.2:
+            # Added hash truncation
+            self.version = 1.2
+
 
     def save(self, data=None, mintime=0):
         "Save the database in lzma which adds a nice checksum and rotate"
@@ -100,7 +112,7 @@ class HexBase:
             meta = dict(mtime=time.time(),      # modification time
                         hash=self.hashname,     # hash choice
                         encoding='hex',         # encode hash as hexadecimal
-                        truncate=False,         # truncate hash to this many bits
+                        truncate=TRUNCATE,      # truncate hash to this many bits
                         version=self.version,   # Database version
                        )
 
@@ -175,7 +187,7 @@ class HexBase:
             if not os.path.exists(src):
                 print("ERROR! Missing .par2 file:", src)
                 return False
-            if phash != self.get_hash(src):
+            if not hash_cmp(phash, self.get_hash(src)):
                 print("WARNING! .par2 files failed vaildation!")
 
             # Ensure dest in clear
@@ -207,7 +219,7 @@ class HexBase:
                     # return m.hexdigest()[:2] + base64.urlsafe_b64encode(m.digest()[1:]).decode()
                     # on disks savings of 10596 vs 11892 = 11% after lzma compression
                     # may be useful for in memory savings in future
-                    return m.hexdigest()
+                    return m.hexdigest()[:TRUNCATE]
 
 
     def verify(self,):
@@ -227,7 +239,7 @@ class HexBase:
                 tprint("Verifying File", fp.progress(filename=src)['default'])
                 if not os.path.exists(src):
                     print('WARNING: Could not find', src)
-                elif not phash == self.get_hash(src):
+                elif not hash_cmp(phash, self.get_hash(src)):
                     print('WARNING: incorrect hash', src)
                 else:
                     verified += 1
