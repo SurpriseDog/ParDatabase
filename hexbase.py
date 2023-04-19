@@ -11,7 +11,11 @@ from sd.file_progress import FileProgress, tprint
 
 BAK_NUM = 8     # Number of database backups
 TRUNCATE = 64   # Hashes are truncated to 64 hex = 256 bits for space savings in database.xz
+                # Not using sha256 because truncated sha512 is better and faster.
 VERSION = 1.2   # Database version number
+MINHASH = 16    # Minimum size of hash = 64 bits
+
+assert(TRUNCATE) >= MINHASH
 
 def user_answer(text='Y/N ?'):
     "Ask the user yes/no questions"
@@ -25,7 +29,10 @@ def user_answer(text='Y/N ?'):
 
 
 def hash_cmp(a, b):
-    if a[:TRUNCATE] != b[:TRUNCATE]:
+    "Compare hashes of unequal length"
+    length = min(len(a), len(b))
+    assert length >= MINHASH
+    if a[:length] != b[:length]:
         return False
     return True
 

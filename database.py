@@ -263,6 +263,7 @@ class Database:
     def repair(self, name):
         "Attempt to repair a file with the files found in the database"
 
+        name = os.path.realpath(name)
         if os.path.isabs(name):
             name = self.rel_path(name)
 
