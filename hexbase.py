@@ -28,11 +28,11 @@ def user_answer(text='Y/N ?'):
             return True
 
 
-def hash_cmp(a, b):
+def hash_cmp(aaa, bbb):
     "Compare hashes of unequal length"
-    length = min(len(a), len(b))
+    length = min(len(aaa), len(bbb))
     assert length >= MINHASH
-    if a[:length] != b[:length]:
+    if aaa[:length] != bbb[:length]:
         return False
     return True
 

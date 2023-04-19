@@ -36,9 +36,13 @@ def walk(dirname, exclude, minimum=1, maximum=None):
     for entry in os.scandir(dirname):
         if entry.is_symlink():
             continue
-        pathname = os.path.join(dirname, entry.name)
-        if pathname.endswith('.par2'):
+
+        if entry.name.endswith('.par2'):
             continue
+        if entry.name == '.pardatabase':
+            continue
+        pathname = os.path.join(dirname, entry.name)
+
         if cant_read(pathname):
             continue
         if entry.is_dir():
@@ -336,7 +340,6 @@ class Database:
             results.append(status)
 
             for number, name in enumerate(files):
-                # total_size += os.path.getsize(name)
                 self.hexbase.put(name, info.hash, '.' + str(number) + '.par2')
 
 

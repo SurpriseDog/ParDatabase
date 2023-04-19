@@ -50,7 +50,7 @@ def parse_args():
 
     ['min', 'minpar', str, '1M'],
     '''
-    Minimum file size to produce par2 files. Par2 works best with larger files and can be extremely inefficient to the point of producing parity files bigger than the source with very small files. Since larger files are more likely to contain bad sectors, the minimum is set to 1 megabyte by default. - Smaller files are still scanned and hashed unless the --minscan option is set otherwise.
+    Minimum file size to produce par2 files. Par2 works best with larger files and can be extremely inefficient to the point of producing parity files bigger than the source with very small files. Since larger files are more likely to contain bad sectors, the minimum size is set to 1 megabyte by default. - Smaller files are still scanned and hashed unless the --minscan option is set otherwise.
     Example: --min 4k
     ''',
     ['max', 'maxpar', str],

@@ -64,7 +64,7 @@ class Info:
         return status
 
 
-    def run_par2(self, par2_options, name):
+    def run_par2(self, par2_options, name, verbose=False):
         '''Run par2 command
         par2_options are passed to par2
         name is the alterate name in case the file needs to be renamed
@@ -74,4 +74,6 @@ class Info:
         if par2_options:
             cmd.extend(('-' + par2_options).split())
         cmd += ['-a', TMPNAME + '.par2', '--', os.path.basename(name)]
+        if verbose:
+            print(' '.join(cmd))
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, cwd=self.cwd)
