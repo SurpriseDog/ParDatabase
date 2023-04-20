@@ -51,7 +51,7 @@ def parse_args():
     ['min', 'minpar', str, '1M'],
     '''
     Minimum file size to produce par2 files. Par2 works best with larger files and can be extremely inefficient to the point of producing parity files bigger than the source with very small files. Since larger files are more likely to contain bad sectors, the minimum size is set to 1 megabyte by default. - Smaller files are still scanned and hashed unless the --minscan option is set otherwise.
-    Example: --min 4k
+    Example: --min 4K
     ''',
     ['max', 'maxpar', str],
     '''
@@ -142,7 +142,6 @@ def main():
     uargs = parse_args()            # User arguments
     if not uargs:
         return False
-
     os.nice(uargs['nice'])
     db = Database(uargs['basedir'], uargs['target'],)
     db.delay = uargs['delay'] if uargs['delay'] else db.delay
@@ -181,6 +180,7 @@ def main():
         print("\nBased on the options selected:")
         print(len(newhashes), "files will be hashed without parity and")
         print(len(newpars), "files will be both hashed and have parity files created")
+
 
     # Hash files without creating parity
     if newhashes:

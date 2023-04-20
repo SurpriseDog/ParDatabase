@@ -86,7 +86,14 @@ class FileProgress:
 
 
     def progress(self, size=0, filename=None):
-        "Mark a single file as processed and return status text, use default or look at code for more."
+        '''Mark a single file as processed and return status text,
+        Returns a dictionary with useful info including:
+            default = A summary line with most useful info
+            realtime = Data rate over the last few seconds
+            average = Average data rate
+            Remaining = Time remaining
+        '''
+
         txt = dict(processing='',           # Processing File #
                    realtime='',             # Realtime rate
                    average='',              # Average rate

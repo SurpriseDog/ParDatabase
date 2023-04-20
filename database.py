@@ -109,7 +109,6 @@ class Database:
         newpars = []                # Files to process that meet reqs
         newhashes = []              # Files that need to be hashed
 
-
         start_time = tpc()
         print("\nScanning file tree:", self.target)
 
@@ -124,30 +123,29 @@ class Database:
             mtime = stat.st_mtime
             size = stat.st_size
 
-            # For existing files:
             if relpath in self.files:
+                # For existing files:
                 info = self.files[relpath]
                 info.pathname = relpath
-
-                # Files that need to be updated:
-                if size < minpar or size > maxpar:
-                    # If file is too big or small to get a par2 file
-
-                    if not info.hash or mtime != info.mtime:
-                        newhashes.append(info)
-                else:
-                    # Files with the range to get a parity
-                    if info.hash not in self.hexbase.pfiles or \
-                       not info.hash or mtime != info.mtime:
-                        newpars.append(info)
-
             else:
                 # For new files
                 info = Info(relpath, base=self.target)
-                newpars.append(info)
+                self.files[relpath] = info
 
-            # Update info link in database
-            self.files[relpath] = info
+            # Files that need to be updated:
+            if size < minpar or size > maxpar:
+                # If file is too big or small to get a par2 file
+                if not info.hash or mtime != info.mtime:
+                    newhashes.append(info)
+            else:
+                # Files within the range to get a parity
+                if info.hash not in self.hexbase.pfiles or \
+                   not info.hash or mtime != info.mtime:
+                    newpars.append(info)
+
+
+
+
         print("Done. Scanned", visited, 'files in', fmt_time(tpc() - start_time))
         return newpars, newhashes
 
