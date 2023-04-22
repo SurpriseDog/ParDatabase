@@ -7,7 +7,7 @@ import sys
 from argparse import ArgumentParser, SUPPRESS
 
 from sd.common import list_get
-from sd.common import auto_cols
+from sd.columns import auto_cols
 from sd.common import undent
 
 

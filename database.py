@@ -9,7 +9,7 @@ from time import perf_counter as tpc
 
 import hexbase
 from info import Info
-from sd.common import fmt_time, rfs, sig
+from sd.format_number import rfs, sig, fmt_time
 from sd.file_progress import FileProgress, tprint
 
 

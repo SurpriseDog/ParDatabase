@@ -1,10 +1,12 @@
 #!/usr/bin/python3
 
 import os
+import math
 import time
+import random
 import shutil
 import unicodedata
-from sd.common import fmt_time, rfs
+from sd.format_number import rfs, fmt_time
 
 def tprint(*args, ending='...', **kargs):
     "Terminal print: Erasable text in terminal"
@@ -41,6 +43,9 @@ def tprint(*args, ending='...', **kargs):
     # Test wth the toxic megacolons:  tprint('：'*222)
 
 
+def bps(num):
+    return rfs(num) + '/s'
+
 
 class FileProgress:
     "Track user time and data rate while processing files"
@@ -52,6 +57,11 @@ class FileProgress:
         self.count = 0
         self.total = total              # Number of files
         self.start = time.perf_counter()
+
+        self.rate = 0                   # Average data rate
+        self.eta = 0                    # Average eta based on history
+        self.history = []               # array with expected eta
+
         self.data_seen = 0              # Data Processed
         self.data_total = data_total    # Total expected data size
 
@@ -86,22 +96,10 @@ class FileProgress:
 
 
     def progress(self, size=0, filename=None):
-        '''Mark a single file as processed and return status text,
-        Returns a dictionary with useful info including:
-            default = A summary line with most useful info
-            realtime = Data rate over the last few seconds
-            average = Average data rate
-            Remaining = Time remaining
-        '''
-
-        txt = dict(processing='',           # Processing File #
-                   realtime='',             # Realtime rate
-                   average='',              # Average rate
-                   remaining='',            # Time remaining
-                   default='',)             # A sentence with a conglomeration of the above
+        '''Mark a single file as processed and return status text'''
 
         now = time.perf_counter()
-        if filename:
+        if filename and not size:
             size = os.path.getsize(filename)
 
         # First file
@@ -111,29 +109,134 @@ class FileProgress:
         self.count += 1
 
 
-        def bps(num):
-            return rfs(num, digits=2) + '/s'
+        # Update history eta
+        if size and self.data_seen:
+            last = self.history[0][0] if self.history else 0
+            if now - last > 1:
+                self.rate = self.data_seen / (now - self.start)
+                eta = now + (self.data_total - self.data_seen) / self.rate
+                self.history.append((now, eta))
+                self.eta = eta
+            while len(self.history) > 10 and now - last > 10:
+                self.history.pop(0)
+            self.eta = self.calc_eta()
 
 
-        txt['processing'] = str(self.count) + ' of ' + str(self.total)
-        default = "#" + txt['processing']
-
-        # Calculate real time rate
+        # Calculate real time rate if enough time has passed
         if now - self.rt_start >= self.rt_interval:
             self.rt_rate = (self.data_seen - self.rt_data) / (now - self.rt_start)
             self.rt_start = now
             self.rt_data = self.data_seen
 
-        if self.data_seen:
-            rate = self.data_seen / (now - self.start)
+        # Update data seen with the new data
+        self.data_seen += size
+
+        return self.status()
+
+
+
+    def calc_eta(self, verbose=False):
+        '''Calculate estimated time remaing based on
+        exponential moving average of self.history
+        '''
+        now = time.perf_counter()
+
+        if len(self.history) > 2:
+            total = 0
+            weights = 0
+            ref = self.eta - now        # Last eta generated
+            if verbose:
+                print("age      weight   left     diff")
+            for t, eta in reversed(self.history):
+                age = now - t
+                left = eta - now            # Convert to seconds left
+
+                # Toss out etas that vary more than 50% from last
+                if abs(left - ref) / ref > 0.5:
+                    continue
+
+                # Weighted average with more recent etas counting more
+                weight = 10 / math.log(age + 2, 2)      # 220 ns
+                total += left * weight
+                weights += weight
+                if verbose:
+                    out = (round(age, 2), \
+                           round(weight, 2), \
+                           round(left, 2), \
+                           round(abs(left - ref) / ref, 2), \
+                           )
+
+
+                    print("{:<8} {:<8} {:<8} {:<8}".format(*out))
+
+            if verbose:
+                print('Average:  ' + ' '*7, round(total / weights, 2))
+                print('Reference:' + ' '*7, round(ref, 2), '\n')
+
+            # print('Calculated in:', fmt_time(time.perf_counter() - now))
+            # Usually <20 microseconds
+
+            return now + total / weights
+        else:
+            return self.eta
+
+
+
+    def status(self, start_delay=1):
+        '''Returns a dictionary with useful info including:
+            default = A summary line with most useful info
+            realtime = Data rate over the last few seconds
+            average = Average data rate
+            Remaining = Time remaining
+
+            Args:
+            start_delay = Wait a bit before displaying text to ensure information
+        '''
+        now = time.perf_counter()
+        txt = {"processing" : str(self.count) + ' of ' + str(self.total)}
+        default = "#" + txt['processing']
+
+        if self.eta and now - self.start > start_delay:
             if self.rt_rate:
                 txt['realtime'] = bps(self.rt_rate)
                 default += ' at ' + txt['realtime']
 
-            txt['average'] = bps(rate)
-            txt['remaining'] = fmt_time((self.data_total - self.data_seen) / rate)
-            default += ' averaging ' + txt['average'] + ' with ' + txt['remaining'] + ' remaining'
-
+            txt['average'] = bps(self.rate)
+            remain = self.eta - now
+            if remain >= 10:
+                txt['remaining'] = fmt_time(remain)
+            else:
+                txt['remaining'] = str(round(remain, 1)) + ' seconds'
+            default += ' averaging ' + txt['average'] + ' with ' + txt['remaining'] + ' remaining' # + str(len(self.history))
         txt['default'] = default
-        self.data_seen += size
         return txt
+
+
+def _tester():
+    # simulate files
+    files = [random.randrange(0, 1e6) for x in range(64)]
+    fp = FileProgress(total=len(files), data_total=sum(files))
+    print("Size:".ljust(8), "Default Text:")
+    for file in files:
+        tprint(format(file, ",").ljust(8), fp.progress(size=file)['default'])
+
+        # Simulate unpredictable file processing
+        delay = (file / 200000) * random.uniform(0.8, 1.2)
+
+        # Poll every second for a continuous countdown
+        remain = delay
+        while True:
+            if remain < 1:
+                time.sleep(remain)
+                break
+            else:
+                time.sleep(1)
+                remain -= 1
+                tprint(format(file, ",").ljust(8), fp.status()['default'])
+
+
+
+
+
+if __name__ == "__main__":
+    _tester()

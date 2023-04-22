@@ -9,7 +9,7 @@ import shutil
 
 from database import Database
 from sd.easy_args import easy_parse
-from sd.common import ConvertDataSize
+from sd.cds import ConvertDataSize
 
 
 # Run self with ionice if available
@@ -51,8 +51,7 @@ def parse_args():
     ['min', 'minpar', str, '1M'],
     '''
     Minimum file size to produce par2 files. Par2 works best with larger files and can be extremely inefficient to the point of producing parity files bigger than the source with very small files. Since larger files are more likely to contain bad sectors, the minimum size is set to 1 megabyte by default. - Smaller files are still scanned and hashed unless the --minscan option is set otherwise.
-    Example: --min 4K
-    ''',
+    Example: --min 4K''',   # pylint: disable=C0301
     ['max', 'maxpar', str],
     '''
     Maximum file size to produce par2 files
