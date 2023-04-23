@@ -250,7 +250,7 @@ class HexBase:
                     print('WARNING: incorrect hash', src)
                 else:
                     verified += 1
-        tprint("Done. Scanned", fp.done()['msg'])
+        tprint("Done. Hashed", fp.done()['msg'])
         print()
 
 

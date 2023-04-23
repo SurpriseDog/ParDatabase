@@ -207,7 +207,9 @@ class FileProgress:
                 txt['remaining'] = fmt_time(remain)
             else:
                 txt['remaining'] = str(round(remain, 1)) + ' seconds'
-            default += ' averaging ' + txt['average'] + ' with ' + txt['remaining'] + ' remaining' # + str(len(self.history))
+            default += ' averaging ' + txt['average'] + \
+                       ' with ' + txt['remaining'] + ' remaining'
+                       # +  str(len(self.history))
         txt['default'] = default
         return txt
 
