@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 # Usage: rotate.py <filename> limit prefix
+# optional limit = Max number of backup files in sequence (not including original)
+# optional prefix = Add a prefix before each number like a '.'
 
 import os
 import sys
@@ -28,14 +30,14 @@ def rotate(path, limit=5, prefix='.', move=True, verbose=False):
         else:
             dest = files[-1]
             if verbose:
-                print("Removing", dest)
+                print("Removing:", dest)
             os.remove(dest)
 
         # Go thru file list backwards, moving each one
         dest = files[gap]
         for src in reversed(files[:gap]):
             if verbose:
-                print("Moving", src, dest)
+                print("Moving:  ", src, 'to', dest)
             os.rename(src, dest)
             dest = src
 

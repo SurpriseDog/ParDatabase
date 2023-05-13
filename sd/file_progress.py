@@ -44,7 +44,7 @@ def tprint(*args, ending='...', **kargs):
 
 
 def bps(num):
-    return rfs(num) + '/s'
+    return rfs(num, digits=2) + '/s'
 
 
 class FileProgress:
@@ -190,7 +190,7 @@ class FileProgress:
             Remaining = Time remaining
 
             Args:
-            start_delay = Wait a bit before displaying text to ensure information
+            start_delay = Wait a bit before displaying text to ensure accuracy
         '''
         now = time.perf_counter()
         txt = {"processing" : str(self.count) + ' of ' + str(self.total)}
@@ -203,6 +203,7 @@ class FileProgress:
 
             txt['average'] = bps(self.rate)
             remain = self.eta - now
+            remain = 0 if remain < 0 else remain
             if remain >= 10:
                 txt['remaining'] = fmt_time(remain)
             else:
@@ -215,15 +216,17 @@ class FileProgress:
 
 
 def _tester():
-    # simulate files
-    files = [random.randrange(0, 1e6) for x in range(64)]
+    "Simulate files in FileProgress"
+    files = [random.randrange(0, 1e5) for x in range(256)]
+    factor = 70 / sum(files)
+
     fp = FileProgress(total=len(files), data_total=sum(files))
     print("Size:".ljust(8), "Default Text:")
     for file in files:
         tprint(format(file, ",").ljust(8), fp.progress(size=file)['default'])
 
         # Simulate unpredictable file processing
-        delay = (file / 200000) * random.uniform(0.8, 1.2)
+        delay = (file * factor) * random.uniform(0.8, 1.2)
 
         # Poll every second for a continuous countdown
         remain = delay

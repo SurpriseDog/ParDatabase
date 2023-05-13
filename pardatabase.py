@@ -7,9 +7,11 @@ import sys
 import time
 import shutil
 
+import sd.tree as tree
+import sd.easy_args as ea
 from database import Database
-from sd.easy_args import easy_parse
 from sd.cds import ConvertDataSize
+
 
 
 # Run self with ionice if available
@@ -19,6 +21,10 @@ try:
 except ModuleNotFoundError:
     pass
 
+
+def sort_by_key(dic):
+    '''Return dict values sorted by key name'''
+    return [dic[key] for key in sorted(dic.keys())]
 
 def parse_args():
     "Parse arguments"
@@ -38,36 +44,14 @@ def parse_args():
             sys.argv[count] = sys.argv[count].lstrip('-')
 
 
-    args = [\
+    # Main arguments including program mode
+    myargs = [\
     ['basedir', '', str],
     "Base directory to put the par2 database, (Defaults to the target directory)",
-    # ['quiet', '', bool],
-    # "Don't print so much",
-    # ['hash', '', str, 'sha512'],
-    # "Hash function to use",
     ['clean', '', bool],
     "Delete old unused .par2 files from the database.",
-
-    ['min', 'minpar', str, '1M'],
-    '''
-    Minimum file size to produce par2 files. Par2 works best with larger files and can be extremely inefficient to the point of producing parity files bigger than the source with very small files. Since larger files are more likely to contain bad sectors, the minimum size is set to 1 megabyte by default. - Smaller files are still scanned and hashed unless the --minscan option is set otherwise.
-    Example: --min 4K''',   # pylint: disable=C0301
-    ['max', 'maxpar', str],
-    '''
-    Maximum file size to produce par2 files
-    Example: --max 1G
-    ''',
-
-    ['minscan', '', str],
-    '''
-    Minimum file size to scan
-    Example: --minscan 4k
-    ''',
-    ['maxscan', '', str],
-    '''
-    Maximum file size to scan and hash.
-    Example: --maxscan 1G
-    ''',
+    ['dryrun', '', bool],
+    "Show what action would be done without doing it.",
     ['nice', '', int, 8],
     "Run program with a nice level, 0=disable",
     ['singlecharfix', '', bool],
@@ -85,25 +69,58 @@ def parse_args():
     "Verify existing files by comparing the hash",
     ['repair', '', str],
     "Repair an existing file",
+    ['verbose', '', bool],
+    "Useful for debugging.",
     ]
 
-    args = easy_parse(args,
-                      positionals,
+
+    # Parity Arguments
+    parity_args = ea.dict_args([\
+    ['minsize', 'min_size', str, '1M'],
+    '''
+    Minimum file size to produce par2 files. Par2 works best with larger files and can be extremely inefficient to the point of producing parity files bigger than the source with very small files. Since larger files are more likely to contain bad sectors, the minimum size is set to 1 megabyte by default. - Smaller files are still scanned and hashed unless the --minscan option is set otherwise.
+    Example: --minsize 4K''',   # pylint: disable=C0301
+    ['maxsize', 'max_size', str],
+    '''
+    Maximum file size to produce par2 files
+    Example: --maxsize 1G
+    ''',
+    ])
+    parity_args = {**ea.dict_args(tree.TREE_ARGS), **parity_args}
+
+    # Scan arguments with no limitations
+    scan_args = ea.dict_args([\
+    ['minsize', 'min_size', str, '1'],
+    "Minimum scan size",
+    ['maxsize', 'max_size', str],
+    "Maximum scan size",
+    '',
+    ], hidden=True)
+    scan_args = {**ea.dict_args(tree.TREE_ARGS, hidden=True), **scan_args}
+
+    # Prepend scan args with the word 'scan'
+    for arg in scan_args.values():
+        arg['alias'] = 'scan' + arg['alias']
+        if arg['varname']:
+            arg['varname'] = 'scan' + arg['varname']
+
+
+    # Parse!
+    am = ea.ArgMaster(\
                       usage='<Target Directory>, options...',
-                      description='Create a database of .par2 files for a directory')
-
-    args = vars(args)
-
-    '''
-    # Choose hashing algorithm
-    hashes = sorted(list(hashlib.algorithms_guaranteed))
-    if args['hash'] not in hashes:
-        print("Available hashes are:", hashes)
-        return False
-    '''
+                      description='Create a database of .par2 files for a directory',
+                     )
+    am.update(positionals, positionals=True, hidden=True)
+    am.update(myargs, title="\nMain Arguments\n")
+    am.update(argdicts=sort_by_key(parity_args),
+              title='''\nParity Arguments: These determine which files have a parity created for them.\nTo apply these arguments to files that are scanned, but no parity made, you can add the word 'scan' to any argument.\nFor example: --scanmaxsize = 1G to limit scanning to files over 1 gigabyte.\n'''  # pylint: disable=C0301
+              )
+    am.update(argdicts=sort_by_key(scan_args), hidden=True)
+    return vars(am.parse())
 
 
-    # Verify that basedir and target dir are okay
+def fix_args(args):
+    '''Verify that basedir and target dir are okay and convert user sizes'''
     basedir = args['basedir']
     target = args['target']
 
@@ -130,7 +147,7 @@ def parse_args():
 
 
     # Convert user data sizes
-    for arg in 'minpar maxpar minscan maxscan'.split():
+    for arg in 'min_size max_size scanmin_size scanmax_size'.split():
         if args[arg]:
             args[arg] = ConvertDataSize()(args[arg])
 
@@ -139,8 +156,14 @@ def parse_args():
 
 def main():
     uargs = parse_args()            # User arguments
+    uargs = fix_args(uargs)
     if not uargs:
         return False
+
+    def dryrun():
+        if uargs['dryrun']:
+            sys.exit(0)
+
     os.nice(uargs['nice'])
     db = Database(uargs['basedir'], uargs['target'],)
     db.delay = uargs['delay'] if uargs['delay'] else db.delay
@@ -152,16 +175,21 @@ def main():
             print("Run again without any --options to generate one.")
             return False
 
+
+
     if uargs['repair']:
         # Repair single file and quit, if requested
+        dryrun()
         return db.repair(uargs['repair'])
 
     if uargs['verify']:
         # Verify files in database
+        dryrun()
         return db.verify()
 
     if uargs['clean']:
         # Check for files deleted from database
+        dryrun()
         print("\n\nRunning database cleaner...")
         db.cleaner()
         db.save()
@@ -170,17 +198,20 @@ def main():
 
 
     # Walk through file tree looking for files that need to be processed
-    newpars, newhashes = db.scan(minscan=uargs['minscan'],
-                                 maxscan=uargs['maxscan'],
-                                 minpar=uargs['minpar'],
-                                 maxpar=uargs['maxpar'],
-                                 )
+    scan_args = {key:uargs['scan' + key] for key in tree.Tree.default_args if 'scan' + key in uargs}
+    parity_args = {key:uargs[key] for key in tree.Tree.default_args if key in uargs}
+    # print('\nuargs', uargs)
+    if uargs['verbose']:
+        print('\nScan_args:', scan_args)
+        print('\nParity_args:', parity_args)
+    newpars, newhashes = db.scan(scan_args, parity_args)
+
     if newpars and newhashes:
         print("\nBased on the options selected:")
         print(len(newhashes), "files will be hashed without parity and")
         print(len(newpars), "files will be both hashed and have parity files created")
 
-
+    dryrun()
     # Hash files without creating parity
     if newhashes:
         db.gen_hashes(newhashes)

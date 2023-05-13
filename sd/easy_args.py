@@ -10,6 +10,8 @@ from sd.common import list_get
 from sd.columns import auto_cols
 from sd.common import undent
 
+################################################################################
+# Easy helper functions:
 
 def easy_parse(options, positionals=None, hidden=None, **kargs):
     '''
@@ -32,31 +34,70 @@ def show_args(uargs):
     "Show the arguments returned"
     if not uargs:
         return
-    auto_cols(sorted([[key, repr(val)] for key, val in (vars(uargs)).items()]))
+    out = sorted([[key, repr(val)] for key, val in (vars(uargs)).items()])
+    out.insert(0, ('Variable:', 'Value:'))
+    out.insert(1, ('=========', '======'))
+    auto_cols(out)
     print()
 
 
+def dict_args(lines, **kargs):
+    "Given ArgMaster lines, make a dictionary of alias to arg"
+    return {arg['alias']:arg for arg in ArgMaster().parse_lines(lines, **kargs)}
+
+
+# #############################################################################3
 class ArgMaster():
     '''
-    A wrapper class for ArgumentParser with easy to use arguments. See update_parser() for details.
+    A wrapper class for ArgumentParser with easy to use arguments.
     sortme will sort all arguments by name (except positionals)
     other arguments are passed onto the ArgumentParser constructor
+
+
+    Format for the lines:
+        Pass an array with lines in the format:
+
+            ('alias', 'variable_name', type, default),
+            "help string",
+
+        You only need to include the fields required, but you can't skip over any.
+            ('alias', '',)        # okay
+            ('alias', type,)      # not okay
+
+        Substitute the word list with a number like "2" to get that number of args required.
+            ('list-args, '', 2)
+
+        Positional arguments are optional by default, but you can specify a number to make them required.
+        To use them, make sure to pass: positionals=True to parse_lines
+
+            ('pos-arg', '', 1)
+
+    See what your arguments are producing by passing verbose=True or running easy_args.show_args(args)
+
     '''
+    _default_info = dict(\
+                        alias=None,     # --variable name
+                        varname=None,   # Variable Name
+                        default=None,   # Default value
+                        typ=None,       # Variable Type
+                        action=None,    # Special for bool variables
+                        msg='',         # Message help for each line
+                        nargs=None,     # nargs for parser
+                        )
 
     def __init__(self, sortme=True, allow_abbrev=True, usage=None, description=None, newline='\n',
-                 verbose=False, exit=True, **kargs):
+                 verbose=False, quit_on_error=True, **kargs):
 
         # Parsing
-        self.verbose = verbose          # Print what each argument does
-        self.dashes = ('-', '--')       # - or -- before argument
-        self.exit = exit                # Quit on error
+        self.verbose = verbose                  # Print what each argument does
+        self.dashes = ('-', '--')               # - or -- before argument
+        self.quit_on_error = quit_on_error      # Quit on error
 
         # Help Formatting:
         self.sortme = sortme            # Sort all non positionals args
         self.usage = usage              # Usage message
         self.description = description
         self.newline = newline          # Newlines in print_help
-        self.autoformat = True          # Capitalize sentences and add a period
 
         # Internal
         self.parser = ArgumentParser(allow_abbrev=allow_abbrev, add_help=False, usage=SUPPRESS, **kargs)
@@ -64,6 +105,125 @@ class ArgMaster():
 
         # Allow optionals before positionals:
         self.intermixed = hasattr(self.parser, 'parse_intermixed_args')
+
+
+    def parser_add(self, info, parser, positionals=False):
+        "Update argument to parser:"
+
+        if positionals:
+            parser.add_argument(info['varname'], default=info['default'], nargs=info['nargs'], help=info['msg'])
+        else:
+            # info['alias'] = '--' + info[alias']
+            aliases = [d + info['alias'] for d in self.dashes]
+            if info['typ'] == bool:
+                parser.add_argument(*aliases, dest=info['varname'], default=info['default'],
+                                    action=info['action'], help=info['msg'])
+            else:
+                parser.add_argument(*aliases, dest=info['varname'], default=info['default'],
+                                    type=info['typ'], nargs=info['nargs'], help=info['msg'], metavar='')
+
+
+    def process_args(self, info, args, positionals=False):
+        '''Extract parser information from each args array'''
+
+        # Read the values from the tuple:
+        info['alias'] = args[0].lstrip('-')
+
+        # Variable Name
+        info['varname'] = list_get(args, 1)
+        if not info['varname']:
+            info['varname'] = info['alias']
+
+        # Type
+        info['typ'] = list_get(args, 2, str)
+
+        # Default value
+        if info['typ'] == list or type(info['typ']) == int:
+            info['default'] = list_get(args, 3, [])
+        else:
+            info['default'] = list_get(args, 3, None)
+
+        # Argument Type and number required
+        if info['typ'] == list:
+            info['nargs'] = '*'
+            info['typ'] = str
+        elif isinstance(info['typ'], int):
+            if positionals and info['typ'] == 1:
+                info['nargs'] = None
+            else:
+                info['nargs'] = info['typ']
+            info['typ'] = str
+        else:
+            info['nargs'] = '?'
+
+        # Special handing for booleans
+        if info['typ'] == bool:
+            if info['default']:
+                info['action'] = 'store_false'
+            else:
+                info['action'] = 'store_true'
+                info['default'] = False
+
+
+    def parse_lines(self, lines, autoformat=True, positionals=False, hidden=False):
+        '''
+        Scan lines and convert to info dict
+        Details for which are found in the class documentation.
+
+        positonals = Is this a list of positonal arguments
+        hidden =     Is this a list of hidden arguments that don't show up in help
+        autoformat = Capitalize sentences and add a period
+
+        '''
+
+        # Make sure the loop ends on a help string
+        if not isinstance(lines[-1], str):
+            lines.append("")
+
+        out = []            #  List of info dicts
+        info = self._default_info.copy()
+
+        for index, args in enumerate(lines):
+            # Add help if available
+            if isinstance(args, str):
+                info['msg'] = undent(args.strip())
+                if autoformat:
+                    if info['msg'] and not info['msg'].endswith('.'):
+                        last = info['msg'].split()[-1]
+                        if last[-1].isalnum() and not last.startswith('-'):
+                            info['msg'] = info['msg'] + '.'
+                if info['default']:
+                    info['msg'] += "  Default: " + str(info['default'])
+
+            # Hide the help text:
+            if hidden:
+                info['msg'] = SUPPRESS
+
+            # If on a new tuple line, add_argument
+            if info['alias'] or info['varname']:
+                out.append(info)
+                info = self._default_info.copy()
+
+            # Continue if not on a new tuple line
+            if isinstance(args, str):
+                continue
+
+            self.process_args(info, args, positionals)
+
+            # Last line
+            if index == len(lines) - 1:
+                out.append(info)
+
+
+        if self.verbose:
+            for info in out:
+                print('alias  :', repr(info['alias']))
+                print('dest   :', repr(info['varname']))
+                print('default:', repr(info['default']))
+                print('type   :', repr(info['typ']))
+                print('nargs  :', repr(info['nargs']), '\n\n')
+
+        return out
 
     def parse(self, args=None, am_help=True, **kargs):
         "Parse the args and return them"
@@ -78,7 +238,7 @@ class ArgMaster():
         for arg in args:
             if re.match('--*h$|--*help$', arg):
                 self.print_help(**kargs)
-                if self.exit:
+                if self.quit_on_error:
                     sys.exit(0)
                 return None
 
@@ -90,7 +250,7 @@ class ArgMaster():
                 return self.parser.parse_args(args)
         except SystemExit:
             self.print_help(**kargs)
-            if self.exit:
+            if self.quit_on_error:
                 sys.exit(0)
 
 
@@ -155,151 +315,22 @@ class ArgMaster():
         print()
 
 
-    def update(self, args, title=None, sortme=None, **kargs):
-        "Pass list to update_parser() and append result to parser"
+    def update(self, lines=None, argdicts=None, title=None, sortme=None, positionals=False, hidden=False):
+        "Pass list to parse_lines() and append result to parser"
+
         group = self.parser.add_argument_group(title)
-        args = self.update_parser(args, group, **kargs)
-        self.groups.append(dict(args=args, title=title, sortme=sortme))
+        if lines:
+            argdicts = self.parse_lines(lines, hidden=hidden, positionals=positionals)
 
-
-    def update_parser(self, lines, parser=None, hidden=False, positionals=False):
-        '''
-        A more intuitive method for adding arguments
-        parser can be empty to return a new parser or a parser argument group
-        hidden = Suppress arguments from showing up in help
-        positionals = Make group positional arguments
-        verbose = Show verbosely how each line in the array is added to argparse
-
-
-        Format:
-            Pass an array with lines in the format:
-
-                ('alias', 'variable_name', type, default),
-                "help string",
-
-            You only need to include the fields required, but you can't skip over any.
-                ('alias', '',)        # okay
-                ('alias', type,)      # not okay
-
-            Substitute the word list with a number like "2" to get that number of args required.
-                ('list-args, '', 2)
-
-            Positional arguments are optional by default, but you can specify a number to make them required.
-            To use them, make sure to pass: positionals=True to update_parser
-
-                ('pos-arg', '', 1)
-
-        See what your arguments are producing by passing verbose=True or running easy_args.show_args(args)
-        '''
-
-        # Make sure the loop ends on a help string
-        if not isinstance(lines[-1], str):
-            lines.append("")
-
-        alias = None        # --variable name
-        varname = None      # Variable Name
-        default = None      # Default value
-        out = []
-
-        def update():
-            nonlocal alias
-            "# Update argument to parser:"
-            if parser:
-                if positionals:
-                    parser.add_argument(varname, default=default, nargs=nargs, help=msg)
-                else:
-                    # alias = '--' + alias
-                    aliases = [d + alias for d in self.dashes]
-                    if typ == bool:
-                        parser.add_argument(*aliases, dest=varname, default=default, action=action, help=msg)
-                    else:
-                        parser.add_argument(*aliases, dest=varname, default=default, type=typ,
-                                            nargs=nargs, help=msg, metavar='')
-                out.append(dict(alias=alias, dest=varname, typ=typ, default=default, msg=msg))
-                if self.verbose:
-                    print('alias  :', repr(alias))
-                    print('dest   :', repr(varname))
-                    print('default:', repr(default))
-                    print('type   :', repr(typ))
-                    print('nargs  :', repr(nargs), '\n\n')
-
-        for index, args in enumerate(lines):
-
-            # Add help if available
-            if isinstance(args, str):
-                msg = undent(args.strip())
-                if self.autoformat:
-                    if msg and not msg.endswith('.'):
-                        last = msg.split()[-1]
-                        if last[-1].isalnum() and not last.startswith('-'):
-                            msg = msg + '.'
-                if default:
-                    msg += "  Default: " + str(default)
-
-            if hidden:
-                # Hide the help text:
-                msg = SUPPRESS
-
-            # If on a new tuple line, add_argument
-            if alias or varname:
-                update()
-                alias = None
-                varname = None
-                msg = ""
-
-            # Continue if not on a new tuple line
-            if isinstance(args, str):
-                continue
-
-            # Read the values from the tuple:
-            alias = args[0].lstrip('-')
-
-            # Variable Name
-            varname = list_get(args, 1)
-            if not varname:
-                varname = alias
-
-            # Type
-            typ = list_get(args, 2, str)
-
-
-            # Default value
-            if typ == list or type(typ) == int:
-                default = list_get(args, 3, [])
-            else:
-                default = list_get(args, 3, None)
-
-
-
-            # Argument Type and number required
-            if typ == list:
-                nargs = '*'
-                typ = str
-            elif isinstance(typ, int):
-                if positionals and typ == 1:
-                    nargs = None
-                else:
-                    nargs = typ
-                typ = str
-            else:
-                nargs = '?'
-
-            # Special handing for booleans
-            if typ == bool:
-                if default:
-                    action = 'store_false'
-                else:
-                    action = 'store_true'
-                    default = False
-            if index == len(lines) - 1:
-                update()
-
-        return out
+        for info in argdicts:
+            self.parser_add(info, parser=group, positionals=positionals)
+        self.groups.append(dict(args=argdicts, title=title, sortme=sortme))
 
 
 def help_parser(parser, show_type=True, sortme=True, wrap=100, tab='  '):
-    "Standalone version of help that only needs an argparse parser"
-    '''Print a custom help message from the ArgumentParser class
+    '''Standalone version of help that only needs an argparse parser
+
+        Print a custom help message from the ArgumentParser class
         show_type = append the variable type expected after each optional argument.
         --arg <int> <int> will expect 2 integers after the arg
         wrap = word wrap instead of using full terminal. 0 = disable
@@ -362,3 +393,55 @@ def help_parser(parser, show_type=True, sortme=True, wrap=100, tab='  '):
             if group.description:
                 auto_cols([[tab + group.description]])
             auto_cols(out, wrap=wrap)
+
+
+
+
+
+################################################################################
+# Testing:
+
+
+
+def _tester():
+    positionals = [\
+    ["target", '', str, '.'],
+    "Target Directory to generate par2",
+    ]
+
+    args = [\
+    ['basedir', '', str],
+    "Base directory to put the par2 database, (Defaults to the target directory)",
+    ['clean', '', bool],
+    "Delete old unused .par2 files from the database.",
+    ['dryrun', '', bool],
+    "Show what action would be done without doing it.",
+    ['nice', '', int, 8],
+    "Run program with a nice level, 0=disable",
+    ['singlecharfix', '', bool],
+    "Temporarily rename files to fix a bug in par2.",
+    "Clean database of extraneous files",
+    ['options', '', str],
+    '''Options passed onto par2 program, use quotes:
+    For example "-r5" will set the target recovery percentage at 5%
+    More options can be found by typing: man par2''',
+    ['sequential', '', bool],
+    "Hash the file before running par2 (instead of running in parallel)",
+    ['delay', '', float],
+    "Wait for (delay * read_time) after every read to keep drive running cooler.",
+    ['verify', '', bool],
+    "Verify existing files by comparing the hash",
+    ['repair', '', str],
+    "Repair an existing file",
+    ]
+
+    args = easy_parse(args,
+                      positionals,
+                      usage='<Target Directory>, options...',
+                      description='Create a database of .par2 files for a directory')
+
+
+    show_args(args)
+
+if __name__ == "__main__":
+    _tester()

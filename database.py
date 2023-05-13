@@ -9,6 +9,7 @@ from time import perf_counter as tpc
 
 import hexbase
 from info import Info
+import sd.tree as tree
 from sd.format_number import rfs, sig, fmt_time
 from sd.file_progress import FileProgress, tprint
 
@@ -93,36 +94,16 @@ class Database:
         self.hexbase.save(out, *args, **kargs)
 
 
-    def scan(self, minscan=None, maxscan=None, minpar=None, maxpar=None):
-        '''
-        Walk through file tree looking for files that need to be processed
-        minscan         = Minimum file size to scan
-        maxscan         = Maximum file size to scan
-        minpar          = Minimum file size to parity
-        maxpar          = Maximum file size to parity
-        '''
-        minscan = minscan or 1          # Minimum size to scan
-        maxscan = maxscan or 0          # Maximum size to scan
-        minpar = minpar or 1            # Minimum size to parity
-        maxpar = maxpar or float('inf') # Maximum size to parity
-
+    def scan(self, scan_args, parity_args):
         newpars = []                # Files to process that meet reqs
-        newhashes = []              # Files that need to be hashed
+        newhashes = dict()          # Files that need to be hashed
 
         start_time = tpc()
-        print("\nScanning file tree:", self.target)
-
-        # Scan the file tree only including files between sizes:
-        # minscan and maxscan, decide to what to do with each file
         visited = 0
-        for stat, pathname in walk(self.target, exclude=self.basedir, minimum=minscan, maximum=maxscan):
+
+        def get_info(pathname):
+            '''Find the info for pathname'''
             relpath = self.rel_path(pathname)
-            visited += 1
-
-            # Get actual mtime and size, not one in database
-            mtime = stat.st_mtime
-            size = stat.st_size
-
             if relpath in self.files:
                 # For existing files:
                 info = self.files[relpath]
@@ -131,23 +112,26 @@ class Database:
                 # For new files
                 info = Info(relpath, base=self.target)
                 self.files[relpath] = info
+            return info
 
-            # Files that need to be updated:
-            if size < minpar or size > maxpar:
-                # If file is too big or small to get a par2 file
-                if not info.hash or mtime != info.mtime:
-                    newhashes.append(info)
+        # Scan all files
+        print("\nScanning file tree:", self.target)
+        for pathname in tree.Tree(self.target, scan_args).walk():
+            visited += 1
+            newhashes[pathname] = get_info(pathname)
+
+        # Look for files that need parity
+        print("Selecting files for parity")
+        for pathname in tree.Tree(self.target, parity_args).walk():
+            if pathname in newhashes:
+                newpars.append(newhashes.pop(pathname))
             else:
-                # Files within the range to get a parity
-                if info.hash not in self.hexbase.pfiles or \
-                   not info.hash or mtime != info.mtime:
-                    newpars.append(info)
-
-
+                visited += 1
+                newpars.append(get_info(pathname))
 
 
         print("Done. Scanned", visited, 'files in', fmt_time(tpc() - start_time))
-        return newpars, newhashes
+        return newpars, newhashes.values()
 
 
     def get_hash(self, path):

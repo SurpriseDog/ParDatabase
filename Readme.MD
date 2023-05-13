@@ -4,7 +4,7 @@ All of the .par2 files are kept in a single .pardatabase folder at the root of t
 
 Just simply run pardatabase.py again every so often with cron to keep the database updated.
 
-## Usage
+### Usage
 
 Make sure the par2 utility is installed with: `sudo apt install par2`
 
@@ -15,9 +15,20 @@ to generate a .pardatabase folder in the target directory with all of the parity
 Get more detailed help with: `pardatabase.py -h`
 
 
-| | |
-| :---   | :--- |
-| **Run Modes** |    |
+### Parity and Scan Arguments
+
+You can select which files are scanned and which files have parity generated for them. By default, all files are scanned and hashed, but only files over 1 MB have parity generated. There are two reasons for this:
+
+    1. Par2 is inefficient for smaller files and often creates parity that's bigger than the file itself.
+
+    2. Bit rot and hard drive failed sectors are much more likely to happen in larger files.
+
+To adjust which files are selected to have parity created, run the program with options like `--minsize` and `--maxsize`. There are many more options available to select files based on file modification time, mime type and more. Use `-h` to get a full list of these options.
+
+
+### Run Modes
+
+
 | | |
 | `--verify ` | Verify existing files by comparing the hash. |
 || By default, pardatabase will only scan your directory for modified files. To recalculate the hash of all existing files, please run with the `--verify` option.|
@@ -29,14 +40,14 @@ Get more detailed help with: `pardatabase.py -h`
 | | par2 files will stay in the database until removed with the `--clean` option. Run `pardatabase.py --clean` occasionally to search for and remove these orphaned par2 files. Because pardatabase references files by their hash, 2 or more named files could be identical and sharing the same .par2 files which means that the cleaner will only delete par2 files after all references to them have disappeared from the file-system. |
 | | |
 
-## Debugging
+### Debugging
 
   * Error: `what(): basic_string::at: __n (which is 1) >= this->size() (which is 1)`
     - This is a par2 error caused by [single character file names.](https://github.com/Parchive/par2cmdline/issues/145)
     - The solution is to update your version of par2.
     - If this can’t be done, then you can run the program with the `--singlecharfix` option to temporarily rename these files.
 
-## Testing
+### Testing
 
 To fake corrupt a file, try appending to a text file, while keeping the modification date in the past.
 
@@ -48,7 +59,7 @@ To fake corrupt a file, try appending to a text file, while keeping the modifica
   * `pardatabase.py' --repair`
 
 
-## Future ideas:
+### Future ideas:
 
 Let me know in the github `issues` section if this or any other idea is interesting to you.
 
