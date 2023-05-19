@@ -33,7 +33,7 @@ TREE_ARGS = [\
 
 
     # Skips
-    ["skip_ext", '', list],
+    ["skip_exts", '', list],
     "File extensions to ignore",
 
     ["skip_mimes", '', list],
@@ -156,7 +156,7 @@ class Tree:
         'max_t': inf,
         'min_size': 0,
         'max_size': inf,
-        'skip_ext': None,
+        'skip_exts': None,
         'skip_mimes': None,
         'skip_dirs': None,
         'skip_paths': None,
@@ -217,8 +217,8 @@ class Tree:
             if self.uargs['print_skips']:
                 print(text.ljust(20), pathname)
 
-        if self.uargs['skip_ext']:
-            if os.path.splitext(name)[-1] in self.uargs['skip_ext']:
+        if self.uargs['skip_exts']:
+            if os.path.splitext(name)[-1] in self.uargs['skip_exts']:
                 return True
 
         if self.uargs['skip_mimes']:

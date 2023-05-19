@@ -10,7 +10,9 @@ import shutil
 import sd.tree as tree
 import sd.easy_args as ea
 from database import Database
+from sd.format_number import rfs
 from sd.cds import ConvertDataSize
+
 
 
 
@@ -85,8 +87,16 @@ def parse_args():
     Maximum file size to produce par2 files
     Example: --maxsize 1G
     ''',
+    ["skip_exts", '', list, ['.par2']],
+    '''
+    File extensions to ignore
+    By default, existing .par2 files are skipped.
+    '''
     ])
+
+    # Overwrite tree_args defaults with some of my own
     parity_args = {**ea.dict_args(tree.TREE_ARGS), **parity_args}
+
 
     # Scan arguments with no limitations
     scan_args = ea.dict_args([\
@@ -154,6 +164,11 @@ def fix_args(args):
     return args
 
 
+def spanning(files):
+    data2process = sum(info.size for info in files)
+    return str(len(files)) + ' files spanning ' + rfs(data2process)
+
+
 def main():
     uargs = parse_args()            # User arguments
     uargs = fix_args(uargs)
@@ -206,10 +221,10 @@ def main():
         print('\nParity_args:', parity_args)
     newpars, newhashes = db.scan(scan_args, parity_args)
 
-    if newpars and newhashes:
+    if (newpars and newhashes) or uargs['dryrun']:
         print("\nBased on the options selected:")
-        print(len(newhashes), "files will be hashed without parity and")
-        print(len(newpars), "files will be both hashed and have parity files created")
+        print(spanning(newhashes), "will be hashed without parity and")
+        print(spanning(newpars), "will be both hashed and have parity files created")
 
     dryrun()
     # Hash files without creating parity
