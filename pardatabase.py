@@ -87,11 +87,11 @@ def parse_args():
     Maximum file size to produce par2 files
     Example: --maxsize 1G
     ''',
-    ["skip_exts", '', list, ['.par2']],
-    '''
-    File extensions to ignore
-    By default, existing .par2 files are skipped.
-    '''
+    # ["skip_exts", '', list, ['.par2']],
+    # '''
+    # File extensions to ignore
+    # By default, existing .par2 files are skipped.
+    # '''
     ])
 
     # Overwrite tree_args defaults with some of my own
@@ -177,6 +177,7 @@ def main():
 
     def dryrun():
         if uargs['dryrun']:
+            print("\nDryrun: No files hashed. No parity created.")
             sys.exit(0)
 
     os.nice(uargs['nice'])
@@ -215,6 +216,12 @@ def main():
     # Walk through file tree looking for files that need to be processed
     scan_args = {key:uargs['scan' + key] for key in tree.Tree.default_args if 'scan' + key in uargs}
     parity_args = {key:uargs[key] for key in tree.Tree.default_args if key in uargs}
+
+    # Always skip .par2 files and pardatabase folders
+    for args in (scan_args, parity_args):
+        args['skip_dirs'].append('.pardatabase')
+        args['skip_exts'].append('.par2')
+
     # print('\nuargs', uargs)
     if uargs['verbose']:
         print('\nScan_args:', scan_args)
@@ -223,7 +230,7 @@ def main():
 
     if (newpars and newhashes) or uargs['dryrun']:
         print("\nBased on the options selected:")
-        print(spanning(newhashes), "will be hashed without parity and")
+        print(spanning(newhashes), "will be hashed without parity")
         print(spanning(newpars), "will be both hashed and have parity files created")
 
     dryrun()

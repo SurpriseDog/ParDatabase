@@ -114,20 +114,32 @@ class Database:
                 self.files[relpath] = info
             return info
 
+        def updated():
+            "Check mtime and size vs one in database"
+            if not info.hash:
+                return True
+            if stat.st_mtime != info.mtime:
+                return True
+            return False
+
         # Scan all files
         print("\nScanning file tree:", self.target)
-        for pathname in tree.Tree(self.target, scan_args).walk():
+        for pathname, stat in tree.Tree(self.target, scan_args).walk(yield_stat=True):
             visited += 1
-            newhashes[pathname] = get_info(pathname)
+            info = get_info(pathname)
+            if updated():
+                newhashes[pathname] = info
+
 
         # Look for files that need parity
-        print("Selecting files for parity")
-        for pathname in tree.Tree(self.target, parity_args).walk():
-            if pathname in newhashes:
-                newpars.append(newhashes.pop(pathname))
-            else:
-                visited += 1
-                newpars.append(get_info(pathname))
+        for pathname, stat in tree.Tree(self.target, parity_args).walk(yield_stat=True):
+            info = get_info(pathname)
+            if updated() or info.hash not in self.hexbase.pfiles:
+                newpars.append(info)
+                if pathname in newhashes:
+                    newhashes.pop(pathname)
+                else:
+                    visited += 1
 
 
         print("Done. Scanned", visited, 'files in', fmt_time(tpc() - start_time))
