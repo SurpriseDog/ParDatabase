@@ -301,11 +301,22 @@ class Database:
         fp = FileProgress(len(newhashes), data2process)
         print("\nCreating only hashes for",
               len(newhashes), 'files spanning', rfs(data2process))
+
+
+        def interrupt(*_):
+            print("\n\nCaught ctrl-c!")
+            print("Saving database, please wait...")
+            self.save()
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, interrupt)     # Catch Ctrl-C
         for info in newhashes:
             size = info.size
             tprint("File", fp.progress(size)['default'] + ':', info.pathname)
             info.hash = self.get_hash(info.fullpath)
             info.update()
+        signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
+
         tprint("\nDone. Processed", fp.done()['msg'])
         print()
 

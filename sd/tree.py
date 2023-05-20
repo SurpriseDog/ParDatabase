@@ -19,10 +19,10 @@ TREE_ARGS = [\
 
 
     # File constraints
-    ["mintime", 'min_t', float],
+    ["timemin", 'min_t', float],
     "Files modified after unix time",
 
-    ["maxtime", 'max_t', float],
+    ["timemax", 'max_t', float],
     "Files modified before unix time",
 
     ["minsize", 'min_size', str],
