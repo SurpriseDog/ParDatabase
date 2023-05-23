@@ -1,7 +1,7 @@
 ParDatabase enables you to recursively generate `.par2` parity files for folders or filesystems, preventing **bit rot** resulting from hardware failure or other errors. It utilizes the [par2](https://manpages.org/par2) utility and employs [SHA-512](https://en.wikipedia.org/wiki/SHA-2) checksums to detect any malicious file tampering. Unlike alternative tools, ParDatabase examines modification times to automatically identify modified files, generating new .par2 files instead of declaring them corrupted.
 
 
-####Features:
+###Features:
 
 
 * Central database with deduplication:
