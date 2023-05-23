@@ -39,13 +39,18 @@ You have the flexibility to choose which files are scanned and have parity gener
 
     2. Larger files are more likely to suffer bit rot and sector failures, making it more crucial to protect them with parity.
 
-To customize the selection of files for parity generation, simply run the program with options such as `--minsize` and `--maxsize`. Additionally, you have a wide array of other options at your disposal to choose files based on criteria like file modification time, MIME type, and more. Explore the full range of available options by running the program with `-h` Use `--dryrun` to test what your arguments do.
+To customize the selection of files for parity generation, simply run the program with options such as `--minsize` and `--maxsize`. Additionally, you have a wide array of other options at your disposal to choose files based on criteria like file modification time, MIME type, and more. Explore the full range of available options by running the program with `-h`
+
+Use `--dryrun` to test what your arguments do.
+
+Use `--print_files` to see a detailed list of what files are being included.
 
 
 ### Run Modes
 
 
 | | |
+|
 | `--verify ` | Verify existing files by comparing the hash. |
 || By default, Pardatabase performs a scan for modified files within your directory. To recalculate the hash of all existing files, simply run the program with the `--verify` option. This verify the hash of all files in the directory. |
 | | |
