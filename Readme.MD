@@ -1,7 +1,7 @@
 ParDatabase enables you to recursively generate `.par2` parity files for folders or filesystems, preventing **bit rot** resulting from hardware failure or other errors. It utilizes the [par2](https://manpages.org/par2) utility and employs [SHA-512](https://en.wikipedia.org/wiki/SHA-2) checksums to detect any malicious file tampering. Unlike alternative tools, ParDatabase examines modification times to automatically identify modified files, generating new .par2 files instead of declaring them corrupted.
 
 
-Features:
+####Features:
 
 
 * Central database with deduplication:
@@ -58,7 +58,6 @@ Use `--print_files` to see a detailed list of what files are being included for 
 | | |
 | `--clean` | Delete old unused .par2 files from the database. |
 | | Par2 files will persist in the database until removed using the --clean option. Periodically running `pardatabase.py --clean` will search for and eliminate any orphaned par2 files. It's worth noting that since pardatabase references files by their hash, it's possible for two or more named files to be identical and share the same .par2 files. As a result, the cleaner will only delete par2 files once all references to them have been deleted from the file system.
-|
 | | |
 
 ### Debugging
