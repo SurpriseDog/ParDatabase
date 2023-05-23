@@ -43,14 +43,13 @@ To customize the selection of files for parity generation, simply run the progra
 
 Use `--dryrun` to test what your arguments do.
 
-Use `--print_files` to see a detailed list of what files are being included.
+Use `--print_files` to see a detailed list of what files are being included for parity.
 
 
 ### Run Modes
 
-
 | | |
-|
+| :---   | :--- |
 | `--verify ` | Verify existing files by comparing the hash. |
 || By default, Pardatabase performs a scan for modified files within your directory. To recalculate the hash of all existing files, simply run the program with the `--verify` option. This verify the hash of all files in the directory. |
 | | |
