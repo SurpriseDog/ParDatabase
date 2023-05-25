@@ -1,7 +1,7 @@
 ParDatabase enables you to recursively generate `.par2` parity files for folders or filesystems, preventing **bit rot** resulting from hardware failure or other errors. It utilizes the [par2](https://manpages.org/par2) utility and employs [SHA-512](https://en.wikipedia.org/wiki/SHA-2) checksums to detect any malicious file tampering. Unlike alternative tools, ParDatabase examines modification times to automatically identify modified files, generating new .par2 files instead of declaring them corrupted.
 
 
-###Features:
+#### Features:
 
 
 * Central database with deduplication:
@@ -41,9 +41,9 @@ You have the flexibility to choose which files are scanned and have parity gener
 
 To customize the selection of files for parity generation, simply run the program with options such as `--minsize` and `--maxsize`. Additionally, you have a wide array of other options at your disposal to choose files based on criteria like file modification time, MIME type, and more. Explore the full range of available options by running the program with `-h`
 
-Use `--dryrun` to test what your arguments do.
+  * Use `--dryrun` to test what your arguments do.
 
-Use `--print_files` to see a detailed list of what files are being included for parity.
+  * Use `--print_files` to see a detailed list of what files are being included for parity.
 
 
 ### Run Modes

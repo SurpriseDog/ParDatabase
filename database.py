@@ -349,7 +349,7 @@ class Database:
 
 
             if not sequential and results[-5:] == ['PARALLEL_EARLY_QUIT'] * 5:
-                print("Too many files with existing .par2... switch to sequential mode.")
+                print("Too many files with existing .par2... switching to sequential mode.")
                 sequential = True
 
 
@@ -410,9 +410,11 @@ class Database:
         else:
             ret = info.run_par2(par2_options, new_name)
             info.hash = self.get_hash(new_name)
+            # Sometimes files already have a .par2 file existing
             if info.hash in self.hexbase.pfiles:
                 ret.terminate()
-                info.remove_existing()
+                print("Parity file already exists in database.")
+                info.remove_existing(verbose=False)
                 rename(new_name, old_name)
                 return 'PARALLEL_EARLY_QUIT', []
             else:

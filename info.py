@@ -45,10 +45,11 @@ class Info:
                 yield os.path.join(self.cwd, name)
 
 
-    def remove_existing(self,):
+    def remove_existing(self, verbose=True):
         "Delete leftover .par2 files"
         for name in self.find_tmp():
-            print("Removing existing par2 file:", name)
+            if verbose:
+                print("Removing existing par2 file:", name)
             os.remove(name)
 
 
