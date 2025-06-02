@@ -22,6 +22,8 @@ try:
     psutil.Process().ionice(psutil.IOPRIO_CLASS_IDLE)
 except ModuleNotFoundError:
     pass
+except AttributeError:
+    pass
 
 
 def sort_by_key(dic):
@@ -180,7 +182,11 @@ def main():
             print("\nDryrun: No files hashed. No parity created.")
             sys.exit(0)
 
-    os.nice(uargs['nice'])
+    try:
+        os.nice(uargs['nice'])
+    except AttributeError:
+        pass
+    
     db = Database(uargs['basedir'], uargs['target'],)
     db.delay = uargs['delay'] if uargs['delay'] else db.delay
 
