@@ -232,7 +232,7 @@ class Database:
 				continue
 
 			if not hexbase.hash_cmp(info.hash, self.get_hash(info.fullpath)):
-				print(info, vars(info))
+				# print(info, vars(info))
 				print("\n\nError in file!", relpath)
 				file_errors.append(relpath)
 
