@@ -69,14 +69,14 @@ Use `--print_files` to see a detailed list of what files are being included for 
 
 ### Testing
 
-To fake corrupt a file, try appending to a text file, while keeping the modification date in the past.
+Linux users can run `tester/tester.sh` to create a folder in /tmp and run the program through it's different options: moving, deleting, corrupting and restoring a file. To do it manually, try editing a text file, while keeping the modification date in the past:
 
 
-  * `date '+%H:%M:%S'` >> a.uniquely.named.test.file.txt`
-  * `pardatabase.py`
-  * `date '+%H:%M:%S'` >> a.uniquely.named.test.file.txt`
   * `touch -d 2000-01-1 a.uniquely.named.test.file.txt`
-  * `pardatabase.py' --repair`
+  * `./pardatabase.py --min 0`
+  * Edit a character in the file.
+  * `touch -d 2000-01-1 a.uniquely.named.test.file.txt`
+  * `pardatabase.py' --min 0 --repair a.uniquely.named.test.file.txt`
 
 
 ### Future ideas:
