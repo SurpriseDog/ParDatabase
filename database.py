@@ -10,6 +10,10 @@ from time import perf_counter as tpc
 import hexbase
 from info import Info
 import sd.tree as tree
+from csvbase import Csvbase
+from hash import get_hash
+
+
 from sd.format_number import rfs, sig, fmt_time
 from sd.file_progress import FileProgress, tprint
 
@@ -62,42 +66,51 @@ def walk(dirname, exclude, minimum=1, maximum=None):
 
 
 class Database:
-	"Database of files, hashes and their par2 files"
 
 	def __init__(self, basedir, target,):
 
 		# Base directory to put the .pardatabase files
-		self.basedir = os.path.join(basedir, '.pardatabase')
+		self.basedir = basedir
 
 		self.target = target				# Target directory to scan
+		self.delay = None				    # Delay after hashing
+		self.files = dict()					# relative filename to Info
 		self.hexbase = hexbase.HexBase(self.basedir)
-		self.files = self.load()			# relative filename to Info
-		self.delay = None				   # Delay after hashing
+		
+		self.csv = Csvbase(self.basedir, 'database.csv', headers=['hash', 'mtime', 'size', 'pathname'])
+		rows = self.csv.load()
+		headers = self.csv.headers
+		for row in rows:
+			row = dict(zip(headers, row))
+			row['mtime'] = float(row['mtime'])
+			row['size'] = int(row['size'])
+			item = Info(load=row)		
+			self.files[item.pathname] = item
+			
 
+	def save(self, mintime=0):
+		if mintime and time.time() - self.csv.last_save < mintime:
+			return False
+			
+		rows = []
+		for item in self.files.values():
+			# print('debug item', vars(item))
+			data = vars(item)
+			rows.append([
+				str(data.get('hash')),
+				str(data.get('mtime')),
+				str(data.get('size')),
+				data.get('pathname'),
+			])	
+			
+		return self.csv.save(rows) & self.hexbase.save()
+		
 
-	def load(self,):
-		'''Load the database'''
-		self.hexbase.load()
-		# print('debug load', self.hexbase.data)
-		files = self.hexbase.data
-		if files:
-			print("Database was last saved", fmt_time(time.time() - self.hexbase.last_save), 'ago')
-			print("Sucessfully loaded info on", len(files), 'files')
-		for pathname, info in files.items():
-			files[pathname] = Info(load=info, base=self.target)
-		return files
-
-
-	def save(self, *args, **kargs):
-		out = dict()
-		for key, val in self.hexbase.data.items():
-			out[key] = val.tojson()
-		self.hexbase.save(out, *args, **kargs)
 
 
 	def scan(self, scan_args, parity_args):
 		newpars = []				# Files to process that meet reqs
-		newhashes = dict()		  # Files that need to be hashed
+		newhashes = dict()		  	# Files that need to be hashed
 
 		start_time = tpc()
 		visited = 0
@@ -150,10 +163,10 @@ class Database:
 	def get_hash(self, path):
 		"Hash a file and optional sleep for delay * read_time"
 		if not self.delay:
-			return self.hexbase.get_hash(path)
+			return get_hash(path)
 		else:
 			start = tpc()
-			result = self.hexbase.get_hash(path)
+			result = get_hash(path)
 			delay = (tpc() - start) * self.delay
 			tprint("Sleeping for...", fmt_time(delay))
 			time.sleep(delay)
@@ -255,7 +268,22 @@ class Database:
 			print("https://github.com/SurpriseDog/LazyCron")
 
 		print('\nChecking .par2 files in database:')
-		self.hexbase.verify()
+		for fhash in self.hexbase.verify():
+			print('Searching database for', fhash)
+			for pathname, info in self.files.items():
+				if info.hash == fhash:
+					print("Found file in database:", info.pathname)
+					if get_hash(pathname) == fhash:
+						self.hexbase.delete(fhash)
+						self.gen_pars([info])
+						self.hexbase.save()
+					else:
+						print("Unfortunately, source file has a different hash")
+					break
+			else:
+				print("Could not find file with hash:", fhash)
+		
+		
 		return not bool(file_errors)
 
 
@@ -286,17 +314,15 @@ class Database:
 		for file in dest_files:
 			print("Found parity file:", file)
 			total += os.path.getsize(file)
-			
-			
-		# print('debug cwd', os.getcwd())
-		# print('debug', name)
-		# print('debug', os.listdir('.'))
-		print("Parity files are", percent(total / os.path.getsize(name)), 'of target file')
-
-
+		
 		if not dest_files:
 			print("No par2 files found for:", name)
 			return False
+
+		print("Parity files are", percent(total / os.path.getsize(name)), 'of target file')
+
+
+
 
 		if info.repair(dest_files):
 			info.hash = self.get_hash(info.fullpath)
@@ -329,12 +355,12 @@ class Database:
 		signal.signal(signal.SIGINT, lambda *args: sys.exit(1))
 
 		tprint("\nDone. Processed", fp.done()['msg'])
-		print()
+		print('\n\n')
 
 
-	def gen_pars(self, newpars, sequential=False, singlecharfix=False, par2_options=None):
+	def gen_pars(self, newpars, sequential=False, singlecharfix=True, par2_options=None):
 		'''Rehash files and Generate new .par2 files
-		sequential	  = Run in sequential mode (generate hash first, then parity)
+		sequential	    = Run in sequential mode (generate hash first, then parity)
 		singlecharfix   = Rename files before running par2
 		par2_options	= Passed onto par2 program
 		'''
@@ -354,6 +380,7 @@ class Database:
 			if status:
 				info.update()
 			results.append(status)
+			
 
 			for number, name in enumerate(files):
 				self.hexbase.put(name, info.hash, '.' + str(number) + '.par2')
@@ -377,14 +404,14 @@ class Database:
 		return True
 
 
-	def generate(self, info, sequential=False, singlecharfix=False, par2_options=None):
+	def generate(self, info, sequential=False, singlecharfix=True, par2_options=None):
 		'''Generate par2 or find existing, return True on new files
 			sequential = Hash the file first, before running par2 (instead of in parallel)
 			singlecharfix = Temporarily replace single character file names
 			par2_options = Options for par2 command
 		'''
 		ret = None
-		old_name = info.fullpath						# Original base filename
+		old_name = info.fullpath					 # Original base filename
 		new_name = old_name							 # Modified name
 		if singlecharfix and len(os.path.basename(old_name)) == 1:
 			new_name = old_name + '.pardatabase.tmp.rename'
@@ -410,7 +437,7 @@ class Database:
 					print("File name restored:", new)
 
 		# Finish before get_hash in sequential mode or run in parallel
-		signal.signal(signal.SIGINT, interrupt)	 # Catch Ctrl-C
+		signal.signal(signal.SIGINT, interrupt)	  # Catch Ctrl-C
 		rename(old_name, new_name)				  # Fix 1 char filenames (if needed)
 		if sequential:
 			info.hash = self.get_hash(new_name)

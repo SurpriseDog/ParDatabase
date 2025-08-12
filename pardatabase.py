@@ -134,30 +134,51 @@ def parse_args():
 
 def fix_args(args):
 	'''Verify that basedir and target dir are okay and convert user sizes'''
+	if not args['basedir']:
+		args['basedir'] = os.path.join(args['target'], '.pardatabase')
+		
 	basedir = args['basedir']
 	target = args['target']
+	
+	print("Target folder:", target)
+	print("Pardatabase folder:", basedir, '\n\n')
 
-	if basedir:
-		if not os.path.exists(basedir):
-			print("Could not find path:", basedir)
-			return False
+	if not os.path.isdir(target):
+		print(f"Error: target folder '{target}' does not exist.")
+		sys.exit(1)
+	if not os.access(target, os.R_OK):
+		print(f"Error: target folder '{target}' is not readable.")
+		sys.exit(1)
+
+	# Get parent of basedir
+	basedir_parent = os.path.dirname(os.path.abspath(basedir))
+
+	# Check if basedir's parent exists and is writable
+	if not os.path.isdir(basedir_parent):
+		print(f"Error: parent folder of basedir '{basedir_parent}' does not exist.")
+		sys.exit(1)
+	if not os.access(basedir_parent, os.W_OK):
+		print(f"Error: parent folder of basedir '{basedir_parent}' is not writable.")
+		sys.exit(1)
+		
+		
+
+	# Make sure the database exists for key operations
+	if any([args[key] for key in args if key in ('repair', 'verify', 'clean')]):
 		if not os.path.isdir(basedir):
-			print("Base directory must be a folder")
-			return False
-	else:
-		basedir = target
+			print("There is no pardatabase in:", basedir)
+			print("Run again without any --options to generate one.")
+			sys.exit(1)
+					
 
-	if not os.path.isdir(target) or not os.access(basedir, os.R_OK):
-		print("Target directory must be a readable folder")
-		return False
-
-	if not os.access(basedir, os.W_OK):
-		print("Base directory must be writeable")
-		return False
-
-	args['basedir'] = os.path.realpath(basedir)
-	args['target'] = os.path.realpath(target)
-
+	# Create basedir if it doesn't exist
+	if not os.path.isdir(basedir):
+		try:
+			os.makedirs(basedir)
+		except OSError as e:
+			print(f"Error: failed to create basedir '{basedir}': {e}")
+			sys.exit(1)
+			
 
 	# Convert user data sizes
 	for arg in 'min_size max_size scanmin_size scanmax_size'.split():
@@ -179,11 +200,14 @@ def spanning(files):
 
 def main():
 	uargs = parse_args()			# User arguments
-	os.chdir(uargs['target'])
-	uargs = fix_args(uargs)
+	uargs = fix_args(uargs)	
 	if not uargs:
 		return False
+		
+			
+	os.chdir(uargs['target'])
 
+		
 	def dryrun():
 		if uargs['dryrun']:
 			print("\nDryrun: No files hashed. No parity created.")
@@ -196,15 +220,7 @@ def main():
 	
 	db = Database(uargs['basedir'], uargs['target'],)
 	db.delay = uargs['delay'] if uargs['delay'] else db.delay
-
-	# Make sure the database exists for key operations
-	if any([uargs[key] for key in uargs if key in ('repair', 'verify', 'clean')]):
-		if not db.files:
-			print("There is no pardatabase for", db.target)
-			print("Run again without any --options to generate one.")
-			return False
-
-
+	print()
 
 	if uargs['repair']:
 		# Repair single file and quit, if requested

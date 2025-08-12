@@ -49,6 +49,7 @@ class Info:
 		"Delete leftover .par2 files"
 		for name in self.find_tmp():
 			print("Removing existing par2 file:", name)
+			assert name.endswith('.par2')
 			os.remove(name)
 
 
@@ -60,6 +61,8 @@ class Info:
 		status = not ret.returncode
 		if status:
 			for file in dest_files:
+				print("Deleting:", file)
+				assert file.endswith('.par2')
 				os.remove(file)
 		return status
 
