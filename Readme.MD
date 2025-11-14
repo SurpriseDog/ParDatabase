@@ -78,6 +78,10 @@ Linux users can run `tester/tester.sh` to create a folder in /tmp and run the pr
   * `touch -d 2000-01-1 a.uniquely.named.test.file.txt`
   * `pardatabase.py' --min 0 --repair a.uniquely.named.test.file.txt`
 
+### Donations
+
+Support my work for this or any one of my other projects by donating <a href="bitcoin:bc1qdjpy249ewas0msptmt843u8zl0vr09njjy2t5h">BTC here</a>
+
 
 ### Future ideas:
 
