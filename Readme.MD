@@ -80,7 +80,7 @@ Linux users can run `tester/tester.sh` to create a folder in /tmp and run the pr
 
 ### Donations
 
-Support my work for this or any one of my other projects by donating [BTC here](bitcoin:bc1qdjpy249ewas0msptmt843u8zl0vr09njjy2t5h)
+Support my work by donating BTC: **bc1qdjpy249ewas0msptmt843u8zl0vr09njjy2t5h**
 
 
 ### Future ideas:
